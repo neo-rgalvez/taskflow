@@ -52,6 +52,7 @@ TaskFlow is designed for **solo freelancers and independent contractors** — de
 - As a freelancer, I want to **save a project as a template and duplicate it** so that I don't recreate the same task structure every time I take on a similar engagement.
 - As a freelancer, I want to **mark tasks as "waiting on client"** so that I can instantly see what's blocked vs. what I can work on right now.
 - As a freelancer, I want to **see a focused "today" view** showing only what I need to work on today across all clients so that I can start my day without planning overhead.
+- As a freelancer, I want to **track which revision round a deliverable is on** so that I know when included revisions are used up and can flag additional work as out of scope.
 - As a freelancer, I want to **archive completed projects** so that my workspace stays clean but history is preserved.
 
 ### Time Tracking
@@ -60,6 +61,7 @@ TaskFlow is designed for **solo freelancers and independent contractors** — de
 - As a freelancer, I want to **manually log time after the fact** so that I can record hours I forgot to track in real time.
 - As a freelancer, I want to **see how many hours I've logged per client this week/month** so that I can verify I'm billing accurately.
 - As a freelancer, I want to **set an hourly rate per client or project** so that time logs automatically calculate earnings.
+- As a freelancer, I want to **add a description to each time entry** so that my invoices show clients exactly what they're paying for.
 - As a freelancer, I want to **mark time entries as billable or non-billable** so that admin work and out-of-scope revisions don't inflate my invoices.
 - As a freelancer, I want to **get a reminder if I haven't tracked time in a while** so that I don't lose billable hours.
 
@@ -83,6 +85,7 @@ TaskFlow is designed for **solo freelancers and independent contractors** — de
 - As a freelancer, I want to **track which projects belong to which client** so that I can see the full history of a relationship.
 - As a freelancer, I want to **log key decisions and communications per project** so that I have a reference when disputes arise.
 - As a freelancer, I want to **share a read-only project status page with a client** so that they can check progress without emailing me.
+- As a freelancer, I want to **let clients upload files** (briefs, brand assets, content) **directly to a project** so that I'm not chasing attachments across email threads.
 
 ### Invoicing & Earnings
 
@@ -92,6 +95,7 @@ TaskFlow is designed for **solo freelancers and independent contractors** — de
 - As a freelancer, I want to **export invoices as PDF** so that I can send them through any channel.
 - As a freelancer, I want to **get automatic reminders about overdue invoices** so that I follow up on late payments without manually tracking them.
 - As a freelancer, I want to **create invoices for fixed-price milestones** (not just time-based) so that all my billing lives in one place.
+- As a freelancer, I want to **set up recurring invoices for retainer clients** so that monthly billing happens automatically without manual work.
 
 ### Insights & Business Health
 
@@ -116,10 +120,10 @@ These features represent the minimum set needed for a freelancer to actually rep
 | 4 | **Task board (Kanban)** | Create tasks within projects; drag between columns (To Do / In Progress / Waiting on Client / Review / Done) |
 | 5 | **Task details** | Due dates, priority levels, descriptions, subtasks, and file attachments |
 | 6 | **Cross-project task list** | A single filterable/sortable view of all tasks across every project, including a "Today" focus mode |
-| 7 | **Built-in time tracker** | Start/stop timer on any task; manual time entry; per-client hourly rate; billable/non-billable toggle |
+| 7 | **Built-in time tracker** | Start/stop timer on any task; manual time entry with descriptions; per-client hourly rate; billable/non-billable toggle |
 | 8 | **Deadline calendar** | Calendar view showing all due dates across projects |
 | 9 | **Deadline reminders** | Configurable notifications (email or in-app) before tasks/projects are due |
-| 10 | **Invoice generation** | Create invoices from tracked time or fixed-price milestones; export as PDF |
+| 10 | **Invoice generation** | Create branded invoices (logo, colors, payment terms) from tracked time or fixed-price milestones; export as PDF |
 | 11 | **Invoice status tracking** | Mark invoices as draft, sent, paid, overdue; filter to see what's outstanding |
 | 12 | **Basic dashboard** | Overview showing active projects, upcoming deadlines, hours tracked this week, and outstanding invoices |
 | 13 | **Mobile responsive** | Full functionality on tablet and phone browsers — freelancers don't work exclusively from desks |
@@ -142,15 +146,20 @@ These features represent the minimum set needed for a freelancer to actually rep
 | 2 | **Late payment reminders** | Automatic email nudge when an invoice goes past due (configurable frequency) |
 | 3 | **Earnings dashboard** | Monthly revenue, outstanding invoices, effective hourly rate, earnings by client |
 | 4 | **Recurring tasks** | Auto-create tasks on a schedule (weekly, biweekly, monthly) |
-| 5 | **Client portal** | Read-only shareable link so clients can see project status |
-| 6 | **Workload heatmap** | Visual showing how booked you are over the next 2-4 weeks |
-| 7 | **Tags and labels** | Categorize tasks by type (design, dev, meeting, admin) across projects |
-| 8 | **Activity log** | Per-project timeline of changes, decisions, and communications |
-| 9 | **Keyboard shortcuts** | Power-user shortcuts for common actions (new task, start timer, switch project) |
+| 5 | **Recurring invoices** | Auto-generate and send invoices on a schedule for retainer clients |
+| 6 | **Client portal** | Read-only shareable link so clients can see project status |
+| 7 | **Workload heatmap** | Visual showing how booked you are over the next 2-4 weeks |
+| 8 | **Tags and labels** | Categorize tasks by type (design, dev, meeting, admin) across projects |
+| 9 | **Activity log** | Per-project timeline of changes, decisions, and communications |
+| 10 | **Revision round tracking** | Set max revision rounds per project; track current round; flag when included revisions are exhausted |
+| 11 | **Client file uploads** | Clients can upload assets (brand guides, copy, images) directly to a project via the client portal |
+| 12 | **Keyboard shortcuts** | Power-user shortcuts for common actions (new task, start timer, switch project) |
 
 **What changed vs. v1 and why:**
 - *Project budgets* added. Freelancers need to know they're at 18 of 20 quoted hours before they blow the estimate. Not MVP because freelancers can survive without it — but the first feature request will be "why can't I see if I'm over budget?"
 - *Late payment reminders* added. Chasing invoices is universally hated. FreshBooks and Harvest both offer this. Not MVP because freelancers can set their own calendar reminders, but it's high-value automation.
+- *Revision round tracking* added. The #1 source of scope creep for designers and creatives. No competitor tracks this natively. Not MVP because freelancers can track rounds manually, but it's a strong differentiator.
+- *Client file uploads* added. Designers chase brand assets via email for weeks. Letting clients upload directly to a project solves this. Depends on the client portal, so not MVP.
 - *Dark mode* removed (moved to Future). It's visual polish, not workflow functionality.
 - *Mobile responsive* removed (promoted to MVP).
 - *Invoice generation/tracking* removed (promoted to MVP).
@@ -171,24 +180,28 @@ These features represent the minimum set needed for a freelancer to actually rep
 | 10 | **API & integrations** | REST API and integrations with tools like Slack, Notion, and QuickBooks |
 | 11 | **Dark mode** | System-matched and manual theme toggle |
 | 12 | **Client approval workflow** | Clients can approve/reject deliverables directly from the client portal |
+| 13 | **Change order workflow** | Formalize scope changes with client approval, automatically adjust project budget and timeline |
+| 14 | **Proposal-to-project automation** | Auto-create project structure, tasks, and milestones from an accepted proposal |
+| 15 | **Post-project lifecycle** | Testimonial collection, referral tracking, automated check-in reminders for past clients |
 
 ---
 
 ## 5. Competitive Context
 
-| Dimension | Trello | Asana | Toggl | Harvest | FreshBooks | **TaskFlow** |
-|-----------|--------|-------|-------|---------|------------|-------------|
-| **Primary audience** | Teams | Teams | Anyone tracking time | Teams & freelancers | Small businesses | Solo freelancers |
-| **Project structure** | Flat boards | Nested projects & portfolios | Projects for time grouping | Projects for time grouping | Projects tied to invoices | Client > Project > Task hierarchy |
-| **Task management** | Kanban boards | Full-featured (lists, boards, timelines) | None | None | None | Kanban with "Waiting on Client" + cross-project list |
-| **Time tracking** | Requires Power-Up | Requires integration | Core feature | Core feature | Basic (start/stop) | Built-in, attached to tasks, billable/non-billable |
-| **Invoicing** | No | No | No (separate product) | Yes, from time entries | Yes, core feature | Yes, from time entries or fixed-price milestones |
-| **Fixed-price projects** | N/A | N/A | No | No | Yes (estimates) | Yes, with milestone billing |
-| **Client management** | No concept of "client" | No concept of "client" | Client tags only | Client records | Full client profiles | First-class client profiles with project history |
-| **Project templates** | Board templates (generic) | Project templates | No | No | No | Yes, save and duplicate any project structure |
-| **Budget tracking** | No | Portfolio-level only | No | Yes, with alerts | Yes (estimates vs. actuals) | Yes, per-project with alerts |
-| **Complexity** | Simple but unstructured | Powerful but team-oriented | Focused only on time | Time + invoicing only | Accounting-first, limited PM | Purpose-built for freelancer workflow |
-| **Pricing model** | Free tier, then per-user | Free tier, then per-user | Free tier, then per-user | $11/user/month, no free tier | $19+/month, no free tier | Flat fee for individual (no per-seat cost) |
+| Dimension | Trello | Asana | Toggl | Harvest | FreshBooks | Bonsai | **TaskFlow** |
+|-----------|--------|-------|-------|---------|------------|--------|-------------|
+| **Primary audience** | Teams | Teams | Anyone tracking time | Teams & freelancers | Small businesses | Freelancers | Solo freelancers |
+| **Project structure** | Flat boards | Nested projects & portfolios | Projects for time grouping | Projects for time grouping | Projects tied to invoices | Client > Project hierarchy | Client > Project > Task hierarchy |
+| **Task management** | Kanban boards | Full-featured (lists, boards, timelines) | None | None | None | Kanban + Gantt | Kanban with "Waiting on Client" + cross-project list |
+| **Time tracking** | Requires Power-Up | Requires integration | Core feature | Core feature | Basic (start/stop) | Built-in | Built-in, attached to tasks, billable/non-billable |
+| **Invoicing** | No | No | No (separate product) | Yes, from time entries | Yes, core feature | Yes, from time entries | Yes, from time entries or fixed-price milestones |
+| **Fixed-price projects** | N/A | N/A | No | No | Yes (estimates) | No | Yes, with milestone billing |
+| **Proposals & contracts** | No | No | No | No | No | Yes, with e-signatures | No (Future roadmap) |
+| **Client management** | No concept of "client" | No concept of "client" | Client tags only | Client records | Full client profiles | CRM with pipeline | First-class client profiles with project history |
+| **Project templates** | Board templates (generic) | Project templates | No | No | No | Task templates | Yes, save and duplicate any project structure |
+| **Budget tracking** | No | Portfolio-level only | No | Yes, with alerts | Yes (estimates vs. actuals) | Yes | Yes, per-project with alerts |
+| **Complexity** | Simple but unstructured | Powerful but team-oriented | Focused only on time | Time + invoicing only | Accounting-first, limited PM | Broad but shallow PM | Purpose-built for freelancer workflow |
+| **Pricing model** | Free tier, then per-user | Free tier, then per-user | Free tier, then per-user | $11/user/month, no free tier | $19+/month, no free tier | $21+/month, no free tier | Flat fee for individual (no per-seat cost) |
 
 ### How TaskFlow Is Different
 
@@ -200,7 +213,9 @@ These features represent the minimum set needed for a freelancer to actually rep
 
 **vs. FreshBooks** (accounting + invoicing): Powerful invoicing and accounting, but project management is an afterthought — no Kanban, no task dependencies, no "waiting on client" visibility. Better for invoicing than managing work.
 
-**TaskFlow's position**: The only tool that covers task management, time tracking, and invoicing in a single app designed for one person managing multiple clients. Competitors either do project management without billing (Trello, Asana), billing without project management (FreshBooks), or time tracking without either (Toggl). Harvest comes closest but lacks real task management. TaskFlow closes every gap.
+**vs. Bonsai** (freelancer all-in-one): The most direct competitor. Bonsai covers proposals, contracts, invoicing, time tracking, basic project management, and even tax prep. But its project management is broad-and-shallow — no "waiting on client" visibility, no cross-project "today" view, no fixed-price milestone billing. Bonsai tries to replace 6 tools and ends up mediocre at each. TaskFlow focuses on the daily work loop (tasks → time → invoice) and does it deeper.
+
+**TaskFlow's position**: The only tool that makes the daily work loop — managing tasks, tracking time, and invoicing — feel like one seamless workflow instead of three bolted-together features. Bonsai is broader (proposals, contracts, taxes) but shallower at the work itself. Harvest and FreshBooks lack task management. Trello and Asana lack billing. TaskFlow owns the middle of the freelancer workflow and does it better than anyone.
 
 ---
 
