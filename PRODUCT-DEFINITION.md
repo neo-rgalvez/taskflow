@@ -59,6 +59,7 @@ This is the problem TaskFlow exists to solve.
 - As a freelancer, I want to **mark tasks as "waiting on client"** so that I can instantly see what's blocked vs. what I can work on right now.
 - As a freelancer, I want to **see a focused "today" view** showing only what I need to work on today across all clients so that I can start my day without planning overhead.
 - As a freelancer, I want to **track which revision round a deliverable is on** so that I know when included revisions are used up and can flag additional work as out of scope.
+- As a freelancer, I want to **set a project status** (Active, On Hold, Completed, Cancelled) so that stalled or cancelled projects stop cluttering my workspace without being permanently archived.
 - As a freelancer, I want to **archive completed projects** so that my workspace stays clean but history is preserved.
 - As a freelancer, I want to **set basic task dependencies** ("blocked by") so that I can see the correct order of operations in sequential creative work (research → concepts → revisions → final files).
 - As a freelancer, I want to **duplicate a task or set of tasks** so that I can quickly set up similar work without retyping everything.
@@ -68,6 +69,7 @@ This is the problem TaskFlow exists to solve.
 
 - As a freelancer, I want to **start and stop a timer on any task** so that I can track time without leaving my task view.
 - As a freelancer, I want to **manually log time after the fact** so that I can record hours I forgot to track in real time.
+- As a freelancer, I want to **edit or delete a time entry** so that I can fix mistakes (wrong project, wrong duration) before they pollute my invoices.
 - As a freelancer, I want to **see how many hours I've logged per client this week/month** so that I can verify I'm billing accurately.
 - As a freelancer, I want to **set an hourly rate per client or project** so that time logs automatically calculate earnings.
 - As a freelancer, I want to **add a description to each time entry** so that my invoices show clients exactly what they're paying for.
@@ -100,7 +102,9 @@ This is the problem TaskFlow exists to solve.
 
 ### Invoicing & Earnings
 
+- As a freelancer, I want to **set up my business profile** (name/company, address, logo, default payment instructions, tax rate, and currency) so that every invoice I generate looks professional and tells the client how to pay me.
 - As a freelancer, I want to **generate an invoice from tracked time** with auto-incrementing invoice numbers so that billing day is fast, accurate, and professional.
+- As a freelancer, I want to **add a tax/VAT line to an invoice** so that I comply with tax law in my country without needing a separate accounting tool.
 - As a freelancer, I want to **email an invoice directly from TaskFlow** so that I don't have to download a PDF, open my email client, and manually attach it.
 - As a freelancer, I want to **see my total earnings and outstanding invoices** so that I understand my cash flow.
 - As a freelancer, I want to **mark invoices as sent, paid, or overdue — and record partial payments** so that I can track deposits and installments without marking the whole invoice as paid.
@@ -145,20 +149,21 @@ These features represent the minimum set needed for a freelancer to actually rep
 | # | Feature | Description |
 |---|---------|-------------|
 | 1 | **Client profiles** | Create, edit, and archive clients with name, contact info, notes, default hourly rate, and default payment terms (Net 15/30/etc.) |
-| 2 | **Project management** | Create projects under clients; set status, description, deadline, billing type (hourly or fixed-price); project-level file attachments for briefs, contracts, and assets |
+| 2 | **Project management** | Create projects under clients; set status (Active / On Hold / Completed / Cancelled), description, deadline, billing type (hourly or fixed-price); project-level file attachments for briefs, contracts, and assets |
 | 3 | **Project templates** | Save a project's task structure as a template; duplicate it for new engagements of the same type |
 | 4 | **Task board (Kanban)** | Create tasks within projects; drag between columns (To Do / In Progress / Waiting on Client / Review / Done) |
 | 5 | **Task details** | Due dates, priority levels, descriptions, subtasks, and file attachments |
 | 6 | **Cross-project task list** | A single filterable/sortable view of all tasks across every project, including a "Today" focus mode |
-| 7 | **Built-in time tracker** | Start/stop timer on any task; manual time entry with descriptions; per-client hourly rate; billable/non-billable toggle; auto-pauses active timer when starting a new one |
+| 7 | **Built-in time tracker** | Start/stop timer on any task; manual time entry with descriptions; edit/delete entries; per-client hourly rate; billable/non-billable toggle; auto-pauses active timer when starting a new one |
 | 8 | **Project budgets** | Set estimated budget (hours or dollars) per project; see actual vs. estimated at a glance; alert at 80% so you can renegotiate before you're underwater |
 | 9 | **Deadline calendar** | Calendar view showing all due dates across projects |
 | 10 | **Deadline reminders** | Configurable notifications (email or in-app) before tasks/projects are due |
-| 11 | **Invoice generation** | Create branded invoices (logo, colors, payment terms) from tracked time or fixed-price milestones; auto-incrementing invoice numbers; export as PDF; send by email directly from TaskFlow |
-| 12 | **Invoice status tracking** | Mark invoices as draft, sent, paid, overdue; record partial payments for deposits and installments; filter to see what's outstanding |
-| 13 | **Basic dashboard** | Overview showing active projects, upcoming deadlines, hours tracked this week, and outstanding invoices |
-| 14 | **Mobile responsive** | Full functionality on tablet and phone browsers — freelancers don't work exclusively from desks |
-| 15 | **Search** | Full-text search across clients, projects, tasks, and notes |
+| 11 | **Business profile** | Set your business name/company, address, logo, default payment instructions (bank details, PayPal, etc.), default tax/VAT rate, and currency — applied automatically to every invoice |
+| 12 | **Invoice generation** | Create invoices from tracked time or fixed-price milestones; auto-incrementing invoice numbers; optional tax/VAT line; export as PDF; send by email directly from TaskFlow |
+| 13 | **Invoice status tracking** | Mark invoices as draft, sent, paid, overdue; record partial payments for deposits and installments; filter to see what's outstanding |
+| 14 | **Basic dashboard** | Overview showing active projects, upcoming deadlines, hours tracked this week, and outstanding invoices |
+| 15 | **Mobile responsive** | Full functionality on tablet and phone browsers — freelancers don't work exclusively from desks |
+| 16 | **Search** | Full-text search across clients, projects, tasks, and notes |
 
 **What changed and why:**
 - *Invoice generation* and *invoice status tracking* moved up from Nice to Have. Without invoicing, the time tracker is a stopwatch that doesn't pay rent. The value prop promises "a single place" — that means closing the loop through to billing.
@@ -175,6 +180,11 @@ These features represent the minimum set needed for a freelancer to actually rep
 - *Default payment terms* added to client profiles. Re-entering "Net 30" on every invoice for the same client is the kind of friction that sends freelancers back to FreshBooks.
 - *Project-level file attachments* added. Briefs, contracts, and brand guidelines belong at the project level, not buried on individual tasks. Without this, the "single source of truth" claim is hollow — freelancers still need a folder somewhere else.
 - *Auto-pause active timer* added to time tracker. When Client B calls while you're timing Client A, the app should handle the switch gracefully. Double-billing or lost time are both unacceptable.
+- *Business profile* added as its own MVP feature. Invoice generation is useless if there's no sender identity, no payment instructions, and no way for the client to know where to send money. This is a day-one blocker that we missed.
+- *Tax/VAT line* added to invoice generation. Freelancers in the EU, UK, Australia, Canada, and most countries outside the US are legally required to charge VAT/GST. Without even a basic tax percentage field, TaskFlow is US-only — that's an unforced limitation for a globally relevant tool.
+- *Default currency* added to business profile. Multi-currency is Future, but zero-currency is a bug. A freelancer in London needs invoices in GBP, not a hardcoded USD.
+- *Edit/delete time entries* added to time tracker. If a freelancer can't fix a mis-logged entry (wrong project, wrong duration), they'll stop trusting the time data — and if they don't trust the data, they won't generate invoices from it. The whole value chain breaks.
+- *Project statuses* (Active / On Hold / Completed / Cancelled) added to project management. "Active" and "Archived" aren't enough. When a client ghosts you mid-project, you need On Hold — the project isn't done, isn't dead, and shouldn't clutter your active workspace.
 - *Guided onboarding* demoted to Nice to Have. A well-designed empty state with inline prompts ("Add your first client →") achieves 80% of the value. A full wizard is polish, not survival.
 - *Quick-add bar* demoted to Nice to Have. Useful power-user feature, but normal task creation flow is sufficient for a first release.
 
@@ -282,7 +292,7 @@ These features represent the minimum set needed for a freelancer to actually rep
 
 ### North Star Metric
 
-**Weekly invoiced hours per active user** — the number of billable hours that flow from TaskFlow's time tracker into a generated invoice each week. This single metric captures whether users are actually completing the full workflow loop (tasks → time tracking → invoicing). If this number grows, it means freelancers trust TaskFlow with the thing that pays their rent.
+**Weekly invoiced revenue per active user** — the dollar value that flows from TaskFlow's time tracker or fixed-price milestones into a generated invoice each week. This single metric captures whether users are actually completing the full workflow loop (tasks → time/milestones → invoicing) regardless of billing model. "Invoiced hours" would miss fixed-price work entirely, and the document explicitly supports both billing types. If this number grows, it means freelancers trust TaskFlow with the thing that pays their rent.
 
 ### Activation
 
