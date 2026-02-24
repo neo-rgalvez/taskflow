@@ -18,6 +18,12 @@ TaskFlow is designed for **solo freelancers and independent contractors** — de
 - Revenue is directly tied to billable hours or deliverables
 - Uses a mix of disconnected tools (spreadsheets, sticky notes, calendar apps, email)
 
+### A Day in the Life (Before TaskFlow)
+
+> It's Monday morning. Sarah, a freelance brand designer, opens her laptop. She has five active clients. She checks Trello for task status, opens Toggl to see what she tracked last week, switches to Gmail to find the latest feedback from Client B, realizes she forgot to log 3 hours on Friday, opens a spreadsheet to update her hours, then realizes Client D's invoice was due last week. She spends 40 minutes figuring out what to work on. By the time she starts actual design work, half her morning energy is gone — and she still isn't sure if she's overbooked for Thursday's deadline.
+
+This is the problem TaskFlow exists to solve.
+
 ### Pain Points
 
 1. **Context switching is expensive.** Jumping between clients means constantly re-loading mental context — what was the last thing discussed, what's the next deliverable, where did that file go.
@@ -97,6 +103,24 @@ TaskFlow is designed for **solo freelancers and independent contractors** — de
 - As a freelancer, I want to **create invoices for fixed-price milestones** (not just time-based) so that all my billing lives in one place.
 - As a freelancer, I want to **set up recurring invoices for retainer clients** so that monthly billing happens automatically without manual work.
 
+### Onboarding & Setup
+
+- As a freelancer, I want to **get started with a guided setup flow** so that I can create my first client and project within minutes of signing up.
+- As a freelancer, I want to **import existing projects from CSV or other tools** so that I don't have to rebuild months of work history from scratch.
+- As a freelancer, I want to **customize my task board columns** so that my workflow matches how I actually work, not a generic template.
+
+### Data & Portability
+
+- As a freelancer, I want to **export all my data** (projects, time entries, invoices) so that I'm never locked into a single tool.
+- As a freelancer, I want to **access TaskFlow on my phone** so that I can check tasks and log time when I'm away from my desk.
+- As a freelancer, I want to **quickly add a task from anywhere in the app** (global shortcut or quick-add bar) so that capturing a thought doesn't interrupt my current work.
+
+### Notifications & Preferences
+
+- As a freelancer, I want to **choose which notifications I receive and how** (email, in-app, push) so that I stay informed without being overwhelmed.
+- As a freelancer, I want to **set quiet hours** so that TaskFlow doesn't ping me during evenings or weekends.
+- As a freelancer, I want to **get a weekly summary email** showing what I accomplished, what's due next week, and outstanding invoices so that I can plan ahead without opening the app.
+
 ### Insights & Business Health
 
 - As a freelancer, I want to **see a dashboard showing this month's revenue, hours worked, and active projects** so that I have a pulse on my business.
@@ -128,6 +152,8 @@ These features represent the minimum set needed for a freelancer to actually rep
 | 12 | **Basic dashboard** | Overview showing active projects, upcoming deadlines, hours tracked this week, and outstanding invoices |
 | 13 | **Mobile responsive** | Full functionality on tablet and phone browsers — freelancers don't work exclusively from desks |
 | 14 | **Search** | Full-text search across clients, projects, tasks, and notes |
+| 15 | **Guided onboarding** | First-run setup wizard that walks users through creating their first client, project, and task |
+| 16 | **Quick-add bar** | Global shortcut to capture a task from anywhere in the app without navigating away |
 
 **What changed vs. v1 of this document and why:**
 - *Invoice generation* and *invoice status tracking* moved up from Nice to Have. Without invoicing, the time tracker is a stopwatch that doesn't pay rent. The value prop promises "a single place" — that means closing the loop through to billing.
@@ -137,6 +163,8 @@ These features represent the minimum set needed for a freelancer to actually rep
 - *Billable/non-billable toggle* added to time tracker. Admin time, out-of-scope revisions, and internal exploration shouldn't appear on invoices. Harvest, Toggl, and every serious time tool has this.
 - *"Today" focus mode* added to cross-project list. Freelancers need a daily starting point, not just a wall of everything.
 - *Fixed-price billing type* added to projects. Many freelancers charge per project, not per hour. The original doc assumed hourly throughout.
+- *Guided onboarding* added. If 70% of signups should create their first client in session one, the app needs to lead them there — not drop them on an empty dashboard.
+- *Quick-add bar* added. Freelancers jump between contexts constantly. Capturing a task should be a 2-second action, not a navigation journey.
 
 ### Nice to Have — Improves Experience but Not Essential
 
@@ -154,12 +182,18 @@ These features represent the minimum set needed for a freelancer to actually rep
 | 10 | **Revision round tracking** | Set max revision rounds per project; track current round; flag when included revisions are exhausted |
 | 11 | **Client file uploads** | Clients can upload assets (brand guides, copy, images) directly to a project via the client portal |
 | 12 | **Keyboard shortcuts** | Power-user shortcuts for common actions (new task, start timer, switch project) |
+| 13 | **Weekly summary email** | Automated digest of the week's accomplishments, upcoming deadlines, and outstanding invoices |
+| 14 | **Notification preferences** | Granular control over what triggers notifications and through which channels (email, in-app, push) |
+| 15 | **Data import** | Import projects and time entries from CSV or common tools (Toggl, Harvest) to ease migration |
 
 **What changed vs. v1 and why:**
 - *Project budgets* added. Freelancers need to know they're at 18 of 20 quoted hours before they blow the estimate. Not MVP because freelancers can survive without it — but the first feature request will be "why can't I see if I'm over budget?"
 - *Late payment reminders* added. Chasing invoices is universally hated. FreshBooks and Harvest both offer this. Not MVP because freelancers can set their own calendar reminders, but it's high-value automation.
 - *Revision round tracking* added. The #1 source of scope creep for designers and creatives. No competitor tracks this natively. Not MVP because freelancers can track rounds manually, but it's a strong differentiator.
 - *Client file uploads* added. Designers chase brand assets via email for weeks. Letting clients upload directly to a project solves this. Depends on the client portal, so not MVP.
+- *Weekly summary email* added. A digest that plans the week for you is high-value automation that reinforces the habit of using TaskFlow.
+- *Notification preferences* added. Freelancers work irregular hours. One-size-fits-all notifications will annoy them into disabling everything.
+- *Data import* added. The #1 barrier to switching tools is sunk cost in the old one. CSV import from Toggl/Harvest lowers the switching cost.
 - *Dark mode* removed (moved to Future). It's visual polish, not workflow functionality.
 - *Mobile responsive* removed (promoted to MVP).
 - *Invoice generation/tracking* removed (promoted to MVP).
@@ -183,6 +217,8 @@ These features represent the minimum set needed for a freelancer to actually rep
 | 13 | **Change order workflow** | Formalize scope changes with client approval, automatically adjust project budget and timeline |
 | 14 | **Proposal-to-project automation** | Auto-create project structure, tasks, and milestones from an accepted proposal |
 | 15 | **Post-project lifecycle** | Testimonial collection, referral tracking, automated check-in reminders for past clients |
+| 16 | **Full data export** | Export all data (clients, projects, tasks, time entries, invoices) as CSV/JSON for portability |
+| 17 | **Team mode** | Invite a subcontractor or VA to a project with scoped access — for freelancers who occasionally collaborate |
 
 ---
 
@@ -220,6 +256,10 @@ These features represent the minimum set needed for a freelancer to actually rep
 ---
 
 ## 6. Success Metrics
+
+### North Star Metric
+
+**Weekly invoiced hours per active user** — the number of billable hours that flow from TaskFlow's time tracker into a generated invoice each week. This single metric captures whether users are actually completing the full workflow loop (tasks → time tracking → invoicing). If this number grows, it means freelancers trust TaskFlow with the thing that pays their rent.
 
 ### Activation
 
