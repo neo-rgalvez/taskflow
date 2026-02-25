@@ -2,7 +2,36 @@
 
 > Step-by-step technical blueprint for building TaskFlow from the current UI mockup into a fully functional production application.
 > This is the **single source of truth** during the build phase.
-> Read alongside [APPLICATION-PLAN.md](./APPLICATION-PLAN.md) and [QA-CHECKLIST.md](./QA-CHECKLIST.md).
+> Read alongside [APPLICATION-PLAN.md](./APPLICATION-PLAN.md), [QA-CHECKLIST.md](./QA-CHECKLIST.md), and [DATA-MODEL-AUDIT.md](./DATA-MODEL-AUDIT.md).
+
+### Data Model Audit Fixes Applied
+
+All 22 issues from [DATA-MODEL-AUDIT.md](./DATA-MODEL-AUDIT.md) have been accepted and incorporated into this plan. Key changes:
+
+| Fix | Category | Change |
+|-----|----------|--------|
+| #1 | New entity | `Session` table for database-backed sessions (replaces stateless iron-session) |
+| #2 | New entity | `PasswordResetToken` table for single-use, expiring reset tokens |
+| #3 | New entity | `EmailVerificationToken` table for verification flow |
+| #4 | FK fix | Invoice `client_id`/`project_id` now nullable; snapshot fields added for orphaned invoices |
+| #5 | New entity | `NotificationPreference` table for notification settings persistence |
+| #6 | Circular FK | Removed `TimeEntry.invoice_line_item_id` (keep `InvoiceLineItem.time_entry_id` only) |
+| #7 | New entity | `CalendarBlockedTime` table for vacation/blocked time |
+| #8 | Race condition | Atomic `next_invoice_number` increment via SQL `RETURNING` clause |
+| #9 | Missing field | `User.scheduled_deletion_at` for 30-day delayed account deletion |
+| #10 | Missing fields | Invoice snapshot fields: `client_name`, `client_email`, `client_address`, `project_name`, `from_business_name`, `from_address`, `from_logo_url` |
+| #11 | Constraint fix | `Invoice.issued_date` now nullable (set on send, not creation) |
+| #12 | Constraint fix | `Invoice.invoice_number` uses composite unique `@@unique([userId, invoiceNumber])` |
+| #13 | Constraint fix | `FileAttachment` CHECK: at least one of `project_id` or `task_id` must be set |
+| #14 | New entity | `ActivityLog` table for dashboard feed and client activity tab |
+| #15 | Status fix | Overdue invoices stay overdue on partial payment (prevents oscillation) |
+| #16 | Docs fix | ER diagram corrected: `User (1) → (N) ProjectTemplate` |
+| #17 | Constraint fix | `Project.budget_alert_threshold` CHECK: 0.00–1.00 |
+| #18 | Missing field | `Subtask.updated_at` and `Milestone.updated_at` added |
+| #19 | Type fix | `Notification.reference_type` changed from string to enum |
+| #20 | Missing field | `FileAttachment.upload_source` enum (owner/portal) added |
+| #21 | Missing indexes | FK indexes added for all commonly queried columns |
+| #22 | Docs note | Completed → Cancelled requires two-step workaround (documented as intentional) |
 
 ---
 
@@ -14,8 +43,8 @@
 | **Language** | TypeScript (strict mode) | Already configured |
 | **Database** | PostgreSQL via Neon | Serverless Postgres; free tier; scales to zero; native `gin` + `tsvector` support for full-text search required by APPLICATION-PLAN.md §2.3 |
 | **ORM** | Prisma | Best TypeScript integration; declarative schema; automatic migrations; type-safe queries |
-| **Auth** | Custom (bcrypt + iron-session) | APPLICATION-PLAN.md §4.1 specifies bcrypt cost 12, server-side sessions, specific cookie flags — custom gives full control |
-| **Session** | iron-session | Encrypted, stateless server-side sessions in HTTP-only cookies; SameSite=Strict; matches §4.1 requirements |
+| **Auth** | Custom (bcrypt + database sessions) | APPLICATION-PLAN.md §4.1 specifies bcrypt cost 12, server-side sessions, specific cookie flags — custom gives full control |
+| **Session** | Database-backed sessions + signed cookie | Server-side session records in PostgreSQL; signed session ID in HTTP-only cookie; supports revocation, multi-session tracking, idle/absolute timeouts (Audit Issue #1) |
 | **File Storage** | Uploadthing | Simple file upload API with signed URLs; presigned upload from client; 2 GB free; integrates with Next.js |
 | **Email** | Resend | Transactional email API; React email templates; free tier (100/day); simple SDK |
 | **PDF** | @react-pdf/renderer | Generate invoice PDFs server-side from React components; no headless browser needed |
@@ -156,7 +185,7 @@ Switch from static export to SSR for API routes and dynamic pages.
 **Steps:**
 1. Create Neon project → get connection string
 2. Install Prisma: `prisma`, `@prisma/client`
-3. Create `prisma/schema.prisma` with initial User + Session models
+3. Create `prisma/schema.prisma` with initial User, Session, PasswordResetToken, EmailVerificationToken models
 4. Run `npx prisma migrate dev` for initial migration
 5. Create `src/lib/db.ts` — Prisma client singleton (handles serverless cold starts)
 
@@ -176,20 +205,23 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
 
 Implement custom auth matching APPLICATION-PLAN.md §4.1 exactly.
 
-**Install:** `bcryptjs`, `iron-session`, `zod`
+**Install:** `bcryptjs`, `zod`, `nanoid` (for cryptographic token generation)
 
 **Components:**
 1. **Password hashing** — bcrypt with cost factor 12
-2. **Sessions** — iron-session with encrypted cookies:
-   - `Secure` flag (HTTPS only)
-   - `HttpOnly` flag (no JS access)
-   - `SameSite=Strict` (CSRF prevention)
-   - 7-day idle timeout, 30-day absolute max
+2. **Sessions** — Database-backed (Audit fix #1):
+   - On login: create `Session` row in PostgreSQL, return signed session ID in cookie
+   - Cookie flags: `Secure`, `HttpOnly`, `SameSite=Strict`
+   - 7-day idle timeout (`last_active_at` + 7 days), 30-day absolute max (`created_at` + 30 days)
+   - On each request: look up session by token hash, update `last_active_at`
+   - **Why not iron-session:** iron-session is stateless (encrypted cookie) — cannot revoke sessions server-side, which §4.1 and §10.6 require
 3. **Auth middleware** — `src/lib/auth.ts`:
-   - `getSession(req)` — returns session or null
+   - `getSession(req)` — returns session or null (checks expiry)
    - `requireAuth(req)` — returns session or throws 401
    - `requireOwnership(userId, resourceUserId)` — throws 403 if mismatch
-4. **Session invalidation on password change** — delete all sessions except current
+4. **Session invalidation on password change** — `DELETE FROM sessions WHERE user_id = ? AND id != ?` (delete all except current)
+5. **Password reset tokens** (Audit fix #2) — stored in `PasswordResetToken` table: single-use, 1-hour expiry, cryptographically random (nanoid 32 chars), stored as hash
+6. **Email verification tokens** (Audit fix #3) — stored in `EmailVerificationToken` table: single-use, resend invalidates all prior tokens for that user
 
 **API Routes:**
 - `POST /api/auth/signup` — create user, hash password, send verification email
@@ -259,7 +291,7 @@ Implement custom auth matching APPLICATION-PLAN.md §4.1 exactly.
 | Variable | Source | Purpose |
 |----------|--------|---------|
 | `DATABASE_URL` | Neon dashboard | PostgreSQL connection string |
-| `IRON_SESSION_PASSWORD` | Generate: 32+ char random string | Encrypts session cookies |
+| `SESSION_SECRET` | Generate: 32+ char random string | Signs session cookies (database-backed sessions — fix #1) |
 | `RESEND_API_KEY` | Resend dashboard | Transactional email |
 | `UPSTASH_REDIS_REST_URL` | Upstash dashboard | Rate limiting |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash dashboard | Rate limiting |
@@ -294,25 +326,31 @@ Implement custom auth matching APPLICATION-PLAN.md §4.1 exactly.
 
 ### B.1 Database Schema (Prisma)
 
-Create all models in `prisma/schema.prisma` matching APPLICATION-PLAN.md §2.2 exactly:
+Create all models in `prisma/schema.prisma` matching APPLICATION-PLAN.md §2.2 with all accepted audit fixes applied:
 
-| Model | Key Fields | Relations |
-|-------|-----------|-----------|
-| User | id, email, password_hash, name, email_verified, timezone | → BusinessProfile, Clients, Projects, etc. |
-| BusinessProfile | user_id (unique), business_name, logo_url, default_tax_rate, default_currency, invoice_number_prefix, next_invoice_number | → User |
-| Client | user_id, name, contact_name, email, default_hourly_rate, default_payment_terms, is_archived | → User, Projects, Invoices |
-| Project | client_id, user_id, name, status (enum), billing_type (enum), hourly_rate, fixed_price, budget_hours, budget_amount, budget_alert_threshold, deadline, portal_token | → Client, Tasks, Milestones, Invoices, Files |
-| Task | project_id, user_id, title, status (enum), priority (enum), due_date, position | → Project, Subtasks, TimeEntries, Files, Dependencies |
-| Subtask | task_id, title, is_completed, position | → Task |
-| TaskDependency | task_id, blocked_by_task_id (unique pair) | → Task × 2 |
-| TimeEntry | task_id (nullable), project_id, user_id, description, start_time, end_time, duration_minutes, is_billable, is_invoiced, invoice_line_item_id | → Task, Project, InvoiceLineItem |
-| Milestone | project_id, name, amount, due_date, status (enum), position | → Project |
-| Invoice | user_id, project_id, client_id, invoice_number (unique per user), status (enum), issued_date, due_date, subtotal, tax_rate, tax_amount, total, amount_paid, balance_due, currency, notes, payment_instructions, sent_at | → Project, Client, LineItems, Payments |
-| InvoiceLineItem | invoice_id, description, quantity, unit_price, amount, type (enum), time_entry_id, milestone_id, position | → Invoice, TimeEntry, Milestone |
-| Payment | invoice_id, amount, payment_date, method, notes | → Invoice |
-| FileAttachment | user_id, project_id (nullable), task_id (nullable), file_name, file_url, file_size, mime_type | → User, Project, Task |
-| ProjectTemplate | user_id, name, description, template_data (JSON) | → User |
-| Notification | user_id, type (enum), title, message, reference_type, reference_id, is_read, channel (enum) | → User |
+| Model | Key Fields | Relations | Audit Changes |
+|-------|-----------|-----------|---------------|
+| **User** | id, email, password_hash, name, email_verified, timezone, **scheduled_deletion_at** (nullable) | → BusinessProfile, Clients, Projects, Sessions, etc. | **+scheduled_deletion_at** (fix #9) |
+| **Session** | id, user_id, **token_hash** (unique), created_at, **last_active_at**, **expires_at**, ip_address, user_agent | → User | **New entity** (fix #1) |
+| **PasswordResetToken** | id, user_id, **token_hash** (unique), expires_at, used_at (nullable), created_at | → User | **New entity** (fix #2) |
+| **EmailVerificationToken** | id, user_id, **token_hash** (unique), expires_at, used_at (nullable), created_at | → User | **New entity** (fix #3) |
+| BusinessProfile | user_id (unique), business_name, logo_url, default_tax_rate, default_currency, invoice_number_prefix, next_invoice_number | → User | — |
+| Client | user_id, name, contact_name, email, default_hourly_rate, default_payment_terms, is_archived | → User, Projects, Invoices | — |
+| Project | client_id, user_id, name, status (enum), billing_type (enum), hourly_rate, fixed_price, budget_hours, budget_amount, budget_alert_threshold, deadline, portal_token | → Client, Tasks, Milestones, Invoices, Files | **+CHECK constraint** on budget_alert_threshold 0.00–1.00 (fix #17) |
+| Task | project_id, user_id, title, status (enum), priority (enum), due_date, position | → Project, Subtasks, TimeEntries, Files, Dependencies | — |
+| **Subtask** | task_id, title, is_completed, position, **updated_at** | → Task | **+updated_at** (fix #18) |
+| TaskDependency | task_id, blocked_by_task_id (unique pair) | → Task × 2 | — |
+| **TimeEntry** | task_id (nullable), project_id, user_id, description, start_time, end_time, duration_minutes, is_billable, is_invoiced | → Task, Project | **Removed invoice_line_item_id** (fix #6 — circular FK) |
+| **Milestone** | project_id, name, amount, due_date, status (enum), position, **updated_at** | → Project | **+updated_at** (fix #18) |
+| **Invoice** | user_id, **project_id** (nullable), **client_id** (nullable), invoice_number (**@@unique with user_id**), status (enum), **issued_date** (nullable), due_date, subtotal, tax_rate, tax_amount, total, amount_paid, balance_due, currency, notes, payment_instructions, sent_at, **client_name, client_email, client_address, project_name, from_business_name, from_address, from_logo_url** | → Project, Client, LineItems, Payments | **client_id/project_id nullable** (fix #4); **+snapshot fields** (fix #10); **issued_date nullable** (fix #11); **composite unique** (fix #12) |
+| InvoiceLineItem | invoice_id, description, quantity, unit_price, amount, type (enum), time_entry_id, milestone_id, position | → Invoice, TimeEntry, Milestone | — |
+| Payment | invoice_id, amount, payment_date, method, notes | → Invoice | — |
+| **FileAttachment** | user_id, project_id (nullable), task_id (nullable), file_name, file_url, file_size, mime_type, **upload_source** (enum: owner/portal, default owner) | → User, Project, Task | **+CHECK** (project_id OR task_id not null) (fix #13); **+upload_source** (fix #20) |
+| ProjectTemplate | user_id, name, description, template_data (JSON) | → User | — |
+| **Notification** | user_id, type (enum), title, message, **reference_type** (enum: task/project/invoice), reference_id, is_read, channel (enum) | → User | **reference_type → enum** (fix #19) |
+| **NotificationPreference** | id, user_id (unique), deadline_reminders_enabled, deadline_reminder_days, budget_alerts_enabled, overdue_invoice_reminders_enabled, time_tracking_reminders_enabled, email_channel_enabled, in_app_channel_enabled, quiet_hours_start, quiet_hours_end | → User | **New entity** (fix #5) |
+| **CalendarBlockedTime** | id, user_id, title, start_date, end_date, created_at, updated_at | → User | **New entity** (fix #7) |
+| **ActivityLog** | id, user_id, entity_type, entity_id, action (created/updated/deleted/status_changed), metadata (JSON), created_at | → User | **New entity** (fix #14) |
 
 **Enums:**
 - ProjectStatus: `active`, `on_hold`, `completed`, `cancelled`
@@ -324,8 +362,13 @@ Create all models in `prisma/schema.prisma` matching APPLICATION-PLAN.md §2.2 e
 - InvoiceLineItemType: `time_entry`, `milestone`, `custom`
 - NotificationType: `deadline_reminder`, `budget_alert`, `overdue_invoice`, `time_tracking_reminder`
 - NotificationChannel: `in_app`, `email`
+- ReferenceType: `task`, `project`, `invoice` (Audit fix #19 — was string, now enum)
+- UploadSource: `owner`, `portal` (Audit fix #20)
+- ActivityAction: `created`, `updated`, `deleted`, `status_changed` (Audit fix #14)
 
-**Indexes** (from APPLICATION-PLAN.md §2.3):
+**Indexes** (from APPLICATION-PLAN.md §2.3 + Audit fix #21):
+
+Original indexes:
 - `clients(user_id) WHERE is_archived = false`
 - `projects(user_id, status)`
 - `projects(client_id)`
@@ -339,6 +382,25 @@ Create all models in `prisma/schema.prisma` matching APPLICATION-PLAN.md §2.2 e
 - `notifications(user_id, is_read) WHERE is_read = false`
 - Full-text search GIN indexes on clients, projects, tasks
 
+New indexes (from audit):
+- `sessions(token_hash)` — unique, fast session lookup
+- `sessions(user_id)` — fast session revocation on password change
+- `password_reset_tokens(token_hash)` — unique, fast token validation
+- `email_verification_tokens(token_hash)` — unique, fast token validation
+- `invoice_line_items(invoice_id)` — line item lookup by invoice
+- `subtasks(task_id)` — subtask lookup by task
+- `payments(invoice_id)` — payment lookup by invoice
+- `file_attachments(project_id)` — file lookup by project
+- `file_attachments(task_id)` — file lookup by task
+- `activity_log(user_id, created_at)` — activity feed query
+- `calendar_blocked_time(user_id, start_date)` — calendar range query
+- `notification_preferences(user_id)` — unique, preference lookup
+
+**CHECK constraints** (from audit):
+- `Project: CHECK (budget_alert_threshold >= 0.00 AND budget_alert_threshold <= 1.00)` (fix #17)
+- `FileAttachment: CHECK (project_id IS NOT NULL OR task_id IS NOT NULL)` (fix #13)
+- `Invoice: @@unique([user_id, invoice_number])` composite unique (fix #12)
+
 ### B.2 Zod Validation Schemas
 
 Create `src/lib/validations/` with one file per entity, matching APPLICATION-PLAN.md §6.3:
@@ -351,6 +413,8 @@ Create `src/lib/validations/` with one file per entity, matching APPLICATION-PLA
 - `subtask.ts` — title (required)
 - `milestone.ts` — name (required), amount (positive)
 - `business-profile.ts` — tax_rate (0–100), currency (ISO 4217)
+- `notification-preference.ts` — quiet_hours_start/end (valid time), reminder_days (positive integer)
+- `calendar-blocked-time.ts` — title (required), start_date (valid), end_date (≥ start_date)
 - `search.ts` — query (min 2 chars, max 200)
 
 ### B.3 API Route Pattern
@@ -496,6 +560,16 @@ export async function POST(req: NextRequest) {
 **Search:**
 - `GET    /api/search?q=` — full-text search across clients, projects, tasks
 
+**Calendar Blocked Time** (Audit fix #7):
+- `GET    /api/calendar/blocked-time` — list blocked time entries for a date range
+- `POST   /api/calendar/blocked-time` — create blocked time (vacation, personal day)
+- `PATCH  /api/calendar/blocked-time/[id]` — update
+- `DELETE /api/calendar/blocked-time/[id]` — delete
+
+**Activity Log** (Audit fix #14):
+- `GET    /api/activity` — recent activity for current user (for dashboard feed)
+- `GET    /api/activity?entity_type=client&entity_id=X` — activity for a specific entity (for client detail activity tab)
+
 **Portal:**
 - `GET    /api/portal/[token]` — get project data (no auth required)
 
@@ -504,16 +578,18 @@ export async function POST(req: NextRequest) {
 
 ### B.5 Deletion Cascade Logic
 
-Implement APPLICATION-PLAN.md §5.5 in service layer (not just Prisma cascades):
+Implement APPLICATION-PLAN.md §5.5 in service layer (not just Prisma cascades).
+
+**Audit fix #4 applied:** Sent/paid invoices are preserved by setting `client_id = null` and `project_id = null` — the snapshot fields (`client_name`, `client_email`, `client_address`, `project_name`, `from_business_name`, `from_address`, `from_logo_url`) retain all display information. FKs are now nullable to support this.
 
 | Delete | Cascade (hard delete) | Preserve | Side Effects |
 |--------|----------------------|----------|-------------|
-| **Client** | All projects (→ cascade below), draft invoices | Sent/paid invoices (snapshot client info) | Stop all running timers on client's projects |
-| **Project** | Tasks, subtasks, time entries, milestones, project-level files, task dependencies | Sent/paid invoices | Stop all running timers on project |
-| **Task** | Subtasks, task dependencies, task-level files | Time entries (set task_id = null) | Stop timer if running on this task |
+| **Client** | All projects (→ cascade below), draft invoices | Sent/paid invoices (set client_id = null; snapshot fields preserved) | Stop all running timers on client's projects |
+| **Project** | Tasks, subtasks, time entries, milestones, project-level files, task dependencies | Sent/paid invoices (set project_id = null; snapshot preserved) | Stop all running timers on project; write ActivityLog entries |
+| **Task** | Subtasks, task dependencies, task-level files | Time entries (set task_id = null) | Stop timer if running on this task; write ActivityLog entry |
 | **Invoice (draft only)** | Line items | — | Unmark time entries (is_invoiced = false), unmark milestones (→ completed) |
 | **Time Entry** | — | — | Blocked if is_invoiced = true |
-| **Account** | Everything (all entities) | — | Schedule for 30-day hard delete; immediate logout |
+| **Account** | Everything (all entities, sessions, tokens, activity log, blocked time, notification prefs) | — | Set `scheduled_deletion_at` = now(); immediate logout; daily job hard-deletes 30 days later (fix #9) |
 
 ---
 
@@ -571,6 +647,7 @@ Connect existing mockup forms to Phase A API routes.
 
 **Implementation details:**
 - Dashboard: 4 stat cards with links → each calls a dedicated aggregation endpoint or `GET /api/dashboard`
+- Recent activity feed: `GET /api/activity` → reads from `ActivityLog` table (fix #14), showing latest actions (client created, task completed, invoice sent, etc.)
 - Today view: `GET /api/tasks?due_date=today&include_overdue=true` grouped by project/client
 - Empty state for new users: onboarding prompts ("Add your first client →")
 - Start timer action: `POST /api/timer/start` with task_id
@@ -585,7 +662,7 @@ Connect existing mockup forms to Phase A API routes.
 
 **Implementation details:**
 - Client list: `GET /api/clients` with search + archive filter → replace mock data
-- Client detail: `GET /api/clients/[id]` → tabs load projects, invoices, activity
+- Client detail: `GET /api/clients/[id]` → tabs load projects, invoices, activity (from `ActivityLog` — fix #14)
 - Create: modal form → `POST /api/clients` → redirect to detail or list
 - Edit: inline or modal → `PATCH /api/clients/[id]`
 - Archive: `PATCH /api/clients/[id]/archive` with unpaid invoice warning
@@ -656,29 +733,40 @@ Connect existing mockup forms to Phase A API routes.
 **Implementation details:**
 - Invoice list: `GET /api/invoices` with status/client filters
 - Invoice detail: `GET /api/invoices/[id]` with line items + payments
+  - **Display from snapshot fields** (`client_name`, `from_business_name`, etc.) for sent invoices, not from live FK lookups (fix #10)
 - New invoice wizard (3 steps):
   1. Select client → `GET /api/clients`
   2. Select project → `GET /api/projects?client_id=X`
   3. Select time entries or milestones → `GET /api/time-entries?project_id=X&is_invoiced=false&is_billable=true` or `GET /api/milestones?project_id=X&status=completed`
   4. Review + adjust → `POST /api/invoices`
-- Send: `POST /api/invoices/[id]/send` → email via Resend, mark entries as invoiced
+- **Invoice number assignment** (fix #8): Use atomic SQL to prevent race condition:
+  ```sql
+  UPDATE business_profiles SET next_invoice_number = next_invoice_number + 1
+  WHERE user_id = $1 RETURNING next_invoice_number - 1 AS assigned_number
+  ```
+  Wrap in a transaction with invoice creation. The composite unique `@@unique([userId, invoiceNumber])` (fix #12) is the safety net.
+- **Snapshot fields** populated on invoice creation (fix #10): `client_name`, `client_email`, `client_address`, `project_name`. On send: also populate `from_business_name`, `from_address`, `from_logo_url` from current BusinessProfile.
+- **issued_date** set to null on draft creation; set to current date on Draft → Sent transition (fix #11)
+- Send: `POST /api/invoices/[id]/send` → email via Resend, mark entries as invoiced, write ActivityLog entry
 - Record payment: `POST /api/invoices/[id]/payments` → update status
-- PDF: `GET /api/invoices/[id]/pdf` → @react-pdf/renderer
+- PDF: `GET /api/invoices/[id]/pdf` → @react-pdf/renderer (uses snapshot fields, not live lookups)
 - Business profile: `GET/PATCH /api/business-profile`
-- Invoice overdue automation: Scheduled function (Netlify Scheduled Function or cron) checks daily: `WHERE status IN ('sent','partial') AND due_date < today AND balance_due > 0` → set status = 'overdue', create notification
+- Invoice overdue automation (with fix #15): Scheduled function checks daily: `WHERE status IN ('sent','partial') AND due_date < today AND balance_due > 0` → set status = 'overdue', create notification. **Once overdue, partial payments keep status as Overdue** (prevents Partial ↔ Overdue oscillation and duplicate notifications)
 
 ### C.8 Calendar
 
-**Data needed:** Task due dates, project deadlines, blocked time
-**User actions:** Navigate months, click deadline → navigate to entity, add blocked time
-**Security:** `user_id` scoping
-**Validation:** Blocked time: start_date ≤ end_date
+**Data needed:** Task due dates, project deadlines, blocked time (stored in `CalendarBlockedTime` table — fix #7)
+**User actions:** Navigate months, click deadline → navigate to entity, add/edit/delete blocked time
+**Security:** `user_id` scoping on all queries
+**Validation:** Blocked time: title required, start_date ≤ end_date
 **Error handling:** Minimal (read-heavy page)
 
 **Implementation details:**
-- Calendar data: `GET /api/calendar?month=2026-03` → returns tasks with due_date, projects with deadline, blocked time entries
+- Calendar data: `GET /api/calendar?month=2026-03` → returns tasks with due_date, projects with deadline, blocked time from `CalendarBlockedTime` table
+- Blocked time CRUD: `POST/PATCH/DELETE /api/calendar/blocked-time` (fix #7 — new entity and API)
 - Build calendar grid with date-fns
 - Color-code by client
+- Blocked time shown in distinct style (grayed out, hatched pattern)
 - Mobile: switch to agenda/list view
 
 ### C.9 Settings & Search
@@ -691,8 +779,9 @@ Connect existing mockup forms to Phase A API routes.
 
 **Implementation details:**
 - Account: `GET/PATCH /api/settings/account`, `POST /api/settings/change-password`, `POST /api/settings/delete-account`
-- GDPR export: `GET /api/settings/export` → generate JSON archive of all user data
-- Notification settings: `GET/PATCH /api/settings/notifications`
+- Account deletion: sets `User.scheduled_deletion_at = now()` (fix #9); immediate logout; daily scheduled job hard-deletes 30 days later
+- GDPR export: `GET /api/settings/export` → generate JSON archive of all user data (includes activity log, blocked time, notification prefs)
+- Notification settings: `GET/PATCH /api/settings/notifications` → reads/writes `NotificationPreference` table (fix #5)
 - Search: `GET /api/search?q=` → PostgreSQL full-text search via GIN indexes → results grouped by type
   - Debounce on client (300ms)
   - Highlight matching terms in snippets
@@ -707,7 +796,7 @@ Connect existing mockup forms to Phase A API routes.
 
 **Implementation details:**
 - `GET /api/portal/[token]` → returns project summary (no auth middleware)
-- File upload: restricted to portal sandbox storage
+- File upload: files created with `upload_source = 'portal'` (fix #20) — distinguishable from owner uploads; restricted to portal sandbox storage
 - No sensitive data (hourly rates, budgets, invoices) exposed
 
 ### C.11 Notifications System
@@ -718,12 +807,14 @@ Connect existing mockup forms to Phase A API routes.
 - **Mark read**: `PATCH /api/notifications/[id]/read`
 - **Mark all read**: `POST /api/notifications/mark-all-read`
 - **Click**: navigate to `reference_type`/`reference_id`
+- **Click**: navigate to `reference_type` (now enum: task/project/invoice — fix #19) / `reference_id`
 - **Notification triggers** (background/scheduled):
-  - Deadline reminder: daily check for tasks due within N days (user-configurable)
+  - Read user's `NotificationPreference` record (fix #5) to determine which notifications are enabled
+  - Deadline reminder: daily check for tasks due within `deadline_reminder_days` (from NotificationPreference)
   - Budget alert: on time entry creation, check project budget threshold
   - Overdue invoice: daily check (described in C.7)
-  - In-app: create Notification record
-  - Email: send via Resend (if channel enabled and not in quiet hours)
+  - In-app: create Notification record (if `in_app_channel_enabled`)
+  - Email: send via Resend (if `email_channel_enabled` and not within `quiet_hours_start`–`quiet_hours_end`)
 
 ---
 
@@ -992,14 +1083,15 @@ Run through QA-CHECKLIST.md §14:
 
 ### E.4 Deletion Cascade Verification
 
-Test every cascade from APPLICATION-PLAN.md §5.5 against QA-CHECKLIST.md §13:
+Test every cascade from APPLICATION-PLAN.md §5.5 against QA-CHECKLIST.md §13 (with audit fixes applied):
 
-- [ ] Delete client → projects, tasks, subtasks, time entries, milestones, files deleted; sent/paid invoices retained
-- [ ] Delete project → tasks, subtasks, time entries, milestones, project files deleted; sent/paid invoices retained
+- [ ] Delete client → projects, tasks, subtasks, time entries, milestones, files deleted; sent/paid invoices retained with `client_id = null` + snapshot fields preserved (fix #4)
+- [ ] Delete project → tasks, subtasks, time entries, milestones, project files deleted; sent/paid invoices retained with `project_id = null` + snapshot preserved (fix #4)
 - [ ] Delete task → subtasks, dependencies, task files deleted; time entries orphaned (task_id = null)
 - [ ] Delete draft invoice → line items deleted; time entries unmarked; milestones reset to completed
 - [ ] Delete time entry (non-invoiced) → removed
-- [ ] Delete account → everything cascaded within 30 days
+- [ ] Delete account → `scheduled_deletion_at` set (fix #9); daily job hard-deletes 30 days later; all sessions, tokens, activity logs, blocked time, notification prefs included in cascade
+- [ ] Verify orphaned invoices display correctly using snapshot fields (no FK lookups on null references)
 
 ### E.5 Scheduled Jobs
 
@@ -1007,10 +1099,12 @@ Set up Netlify Scheduled Functions (or equivalent cron):
 
 | Job | Schedule | Logic |
 |-----|----------|-------|
-| Invoice overdue check | Daily at midnight UTC | `WHERE status IN ('sent','partial') AND due_date < today AND balance_due > 0` → set status = 'overdue', create notification |
-| Deadline reminders | Daily at 8am user timezone | Tasks due within user's configured reminder window → create notification |
-| Session cleanup | Weekly | Delete expired sessions from database |
-| Account deletion | Daily | Hard-delete accounts marked for deletion 30+ days ago |
+| Invoice overdue check | Daily at midnight UTC | `WHERE status IN ('sent','partial') AND due_date < today AND balance_due > 0` → set status = 'overdue', create notification. Once overdue, stays overdue even with partial payments (fix #15) |
+| Deadline reminders | Daily at 8am user timezone | Check `NotificationPreference.deadline_reminder_days` (fix #5); tasks due within window → create notification (if enabled) |
+| Session cleanup | Weekly | `DELETE FROM sessions WHERE expires_at < now() OR last_active_at < now() - INTERVAL '7 days'` (fix #1 — database sessions) |
+| Token cleanup | Weekly | Delete expired/used PasswordResetTokens and EmailVerificationTokens (fixes #2, #3) |
+| Account deletion | Daily | `DELETE FROM users WHERE scheduled_deletion_at < now() - INTERVAL '30 days'` (fix #9) — cascade all owned data |
+| Activity log pruning | Monthly | Delete activity log entries older than 90 days to prevent unbounded growth (fix #14) |
 
 ### E.6 Monitoring & Health Checks
 
@@ -1093,7 +1187,7 @@ Verify `netlify.toml` security headers:
 | Variable | Phase | Required |
 |----------|-------|----------|
 | `DATABASE_URL` | A | Yes |
-| `IRON_SESSION_PASSWORD` | A | Yes |
+| `SESSION_SECRET` | A | Yes — 32+ char random string for signing session cookies (replaces iron-session — fix #1) |
 | `RESEND_API_KEY` | A | Yes |
 | `UPSTASH_REDIS_REST_URL` | A | Yes |
 | `UPSTASH_REDIS_REST_TOKEN` | A | Yes |
@@ -1112,7 +1206,8 @@ Verify `netlify.toml` security headers:
 | Netlify function timeout (10s default) | PDF generation or data export could timeout | Increase to 26s max; stream large exports; generate PDFs async |
 | Uploadthing free tier limits | 2 GB storage, 2 GB bandwidth/month | Monitor usage; upgrade if needed; warn users on approaching limits |
 | Resend free tier limits | 100 emails/day | Monitor usage; upgrade if users send many invoices; queue overflow to next day |
-| iron-session stateless sessions | Can't revoke individual sessions server-side | Maintain session blacklist in Redis for logout/password-change invalidation |
+| Database session table growth | Session records accumulate over time | Weekly cleanup job deletes expired sessions (fix #1); index on expires_at |
+| Activity log table growth | ActivityLog records accumulate indefinitely | Monthly pruning job deletes entries older than 90 days (fix #14) |
 | Full-text search performance | GIN indexes may slow writes on large datasets | Monitor Neon query performance; consider dedicated search (Typesense) if needed |
 | Prisma serverless bundle size | Large Prisma client in serverless functions | Use Prisma Accelerate or Prisma Data Proxy if cold starts exceed 3s |
 
