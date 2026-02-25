@@ -20,6 +20,7 @@
 11. [Security Tests](#11-security-tests)
 12. [Destructive Actions](#12-destructive-actions)
 13. [Performance Tests](#13-performance-tests)
+14. [Real User Behavior Tests](#14-real-user-behavior-tests)
 
 ---
 
@@ -161,6 +162,7 @@
 **LOADING STATE:**
 - [ ] Submit button shows loading state
 - [ ] Form fields disabled during submission
+- [ ] Double-clicking submit does not trigger two login requests
 
 **SECURITY:**
 - [ ] Accessible without authentication
@@ -210,6 +212,7 @@
 **LOADING STATE:**
 - [ ] Submit button shows loading indicator
 - [ ] Form disabled during submission
+- [ ] Double-clicking submit does not send multiple reset emails
 
 **SECURITY:**
 - [ ] Same confirmation message whether email exists or not (no user enumeration)
@@ -259,6 +262,7 @@
 
 **LOADING STATE:**
 - [ ] Submit button shows loading indicator
+- [ ] Double-clicking submit does not reset the password twice or error
 
 **SECURITY:**
 - [ ] Token is validated server-side before showing the form
@@ -526,11 +530,18 @@
 - [ ] Edit form is usable on mobile
 
 **EDGE CASES:**
-- [ ] Editing client while another tab has the same client open
+- [ ] Editing client while another tab has the same client open — last write wins or conflict warning
 - [ ] Archived client — edit and archive/unarchive toggle
 - [ ] Client with 50+ projects — list performance
 - [ ] Updating default hourly rate — does not retroactively change existing projects
 - [ ] Deleting a client — cascade warning and confirmation
+- [ ] Double-clicking save does not create duplicate requests or corrupt data
+- [ ] Browser back button after saving — goes to client list, not re-saves
+- [ ] Browser refresh mid-edit — unsaved changes prompt or data preserved
+- [ ] Session expires while editing client — save attempt redirects to login, return URL preserved
+- [ ] Pasting 50,000+ characters into notes field — truncated or rejected gracefully
+- [ ] Pasting rich text (HTML from Word/Google Docs) into notes — stripped to plain text or handled safely
+- [ ] Deleting a client in one tab while viewing it in another — second tab shows 404 on next action
 
 ---
 
@@ -630,6 +641,11 @@
 - [ ] Two tabs open on the same board — concurrent drag operations
 - [ ] Task with very long title — card truncation
 - [ ] Rapid successive drag operations
+- [ ] Browser refresh mid-drag — board reloads to pre-drag state
+- [ ] Dropping a card outside any column — card snaps back to original position
+- [ ] Browser back button from board — navigates to project list, not undo last drag
+- [ ] Session expires while dragging — drop is rejected, user redirected to login
+- [ ] Double-clicking "Add Task" button — does not open two create forms or create duplicates
 
 ---
 
@@ -906,6 +922,19 @@
 - [ ] Task in a completed project — is editing allowed?
 - [ ] Very long description — scrolling behavior
 - [ ] Circular dependency prevention (A blocks B, B blocks A)
+- [ ] Double-clicking save/status-change does not fire duplicate API requests
+- [ ] Browser refresh while editing title — unsaved change prompt, or auto-save
+- [ ] Browser back button from task modal — closes modal (not navigates away from project)
+- [ ] Escape key closes the task modal/panel
+- [ ] Session expires while editing task description — save attempt redirects to login
+- [ ] Pasting 100,000+ characters into description field — rejected or truncated gracefully, no browser freeze
+- [ ] Pasting rich text (HTML) into description — stripped to safe content or rendered correctly
+- [ ] Pasting an image directly into description (Ctrl+V screenshot) — handled or gracefully ignored
+- [ ] Deleting a task in one tab while editing it in another — second tab shows error on save
+- [ ] Opening the same task modal from Today view AND from project board simultaneously
+- [ ] Rapid checkbox toggling on subtasks — each toggle is debounced and persisted correctly
+- [ ] Uploading a file while another upload is in progress — queued or parallel with correct state
+- [ ] Cancelling a file upload mid-progress — upload stops, no partial file saved
 
 ---
 
@@ -968,6 +997,11 @@
 - [ ] Billable amount calculation: duration × hourly rate accuracy
 - [ ] Time entries for projects with different hourly rates
 - [ ] Entries where the task was subsequently deleted (orphaned entries)
+- [ ] Double-clicking save on manual entry does not create duplicate entries
+- [ ] Browser back button after saving a manual entry — goes to entry list, not re-creates
+- [ ] Session expires while filling out manual entry form — save fails, redirected to login with form data preserved
+- [ ] Pasting extremely long text (50K+ chars) into description field — truncated or rejected
+- [ ] Editing an entry in one tab while deleting it in another — edit fails with clear error
 
 ---
 
@@ -1125,6 +1159,11 @@
 - [ ] Sending invoice when client has no email — error or prompt
 - [ ] Deleting a draft invoice — unlinks time entries (is_invoiced = false), unlinks milestones
 - [ ] Viewing a Sent invoice for a now-deleted project — retained for accounting
+- [ ] Double-clicking "Send by Email" does not send the invoice twice
+- [ ] Double-clicking "Record Payment" does not record payment twice
+- [ ] Double-clicking "Export PDF" does not trigger two downloads
+- [ ] Recording a payment in one tab while viewing the same invoice in another — second tab shows stale balance until refresh
+- [ ] Session expires while recording a payment — payment fails, redirected to login
 
 ---
 
@@ -1188,9 +1227,17 @@
 - [ ] Time entries from different hourly rates (rate changed mid-project)
 - [ ] Rounding in line item calculations (quantity × unit_price = amount)
 - [ ] Auto-generated invoice number collision (concurrent creation)
-- [ ] Navigating away mid-wizard — data loss warning
+- [ ] Navigating away mid-wizard — data loss warning ("You have unsaved changes. Leave page?")
 - [ ] Fixed-price project with some milestones already invoiced — only shows uninvoiced
 - [ ] Very large invoice (100+ time entries as line items) — performance
+- [ ] Double-clicking "Save as Draft" does not create two draft invoices
+- [ ] Browser back button mid-wizard — goes to previous wizard step (not loses all data)
+- [ ] Browser refresh mid-wizard — data loss warning, wizard resets to step 1
+- [ ] Session expires mid-wizard at step 3 — save fails, redirected to login, wizard data lost (acceptable with clear messaging)
+- [ ] Opening `/invoices/new` in two tabs and saving both — second save creates a different invoice number (no collision)
+- [ ] Pasting 10,000+ characters into invoice notes field — truncated or rejected
+- [ ] Selecting time entries in wizard, then another user (other tab) deletes one — save handles missing entry gracefully
+- [ ] Browser forward button after completing wizard — does not re-create the invoice
 
 ---
 
@@ -1239,6 +1286,11 @@
 - [ ] Changing currency after invoices exist — affects only new invoices
 - [ ] Changing invoice number prefix — next invoice uses new prefix
 - [ ] Setting next_invoice_number to a lower value — potential duplicate numbers
+- [ ] Double-clicking save does not submit the form twice
+- [ ] Pasting 50,000+ characters into payment instructions — truncated or rejected
+- [ ] Pasting rich text (HTML) into address or payment instructions — stripped safely
+- [ ] Browser refresh mid-edit — unsaved changes lost (acceptable) or preserved
+- [ ] Editing business profile in two tabs — last save wins, no corruption
 
 ---
 
@@ -1340,6 +1392,11 @@
 - [ ] Changing email to one that has a pending sign-up
 - [ ] Deleting account with active projects and unpaid invoices — cascade warning
 - [ ] Account deletion within 30-day grace period — all data hard-deleted
+- [ ] Double-clicking "Change Password" does not fire two password change requests
+- [ ] Double-clicking "Delete Account" does not bypass confirmation dialogs
+- [ ] Session expires while changing password — change fails, redirected to login
+- [ ] Password change in one tab invalidates session in another tab immediately
+- [ ] Browser back button after successful email change — does not undo the change
 
 ---
 
@@ -1657,6 +1714,277 @@ These test end-to-end journeys that span multiple pages.
 - [ ] Dashboard aggregate queries (count projects, sum invoices) are optimized
 - [ ] Today view query (tasks due today across all projects) uses proper indexes
 - [ ] Time entries query with date range filter uses proper indexes
+
+---
+
+## 14. Real User Behavior Tests
+
+These tests cover cross-cutting "what a real person would actually do" patterns
+that apply across the entire application. They exist because real users don't
+follow scripts — they double-click, hit back, paste from Word, lose Wi-Fi,
+and open 12 tabs.
+
+---
+
+### 14.1 Double-Click & Rapid Re-Submit
+
+Every form submission and destructive action must be idempotent or guarded.
+
+**Forms (every form in the app):**
+- [ ] Double-clicking any submit/save button does not create duplicate records or fire duplicate API calls
+- [ ] Verify on: Sign Up, Log In, Forgot Password, Reset Password, Create Client, Edit Client, Create Project, Edit Project, Create Task, Edit Task, Log Time (manual entry), Create Invoice (Save as Draft), Record Payment, Business Profile save, Account Settings save, Notification Settings save, Add Subtask, Add Blocked Time
+- [ ] Submit button is disabled or shows spinner after first click, re-enabled on response
+- [ ] Keyboard Enter key in a form behaves the same as clicking submit (not double-fire)
+
+**Destructive actions:**
+- [ ] Double-clicking "Delete" on a confirmation dialog does not delete twice or throw an error
+- [ ] Double-clicking "Archive" does not toggle archive on/off
+- [ ] Double-clicking "Send Invoice" does not send the email twice
+- [ ] Double-clicking "Stop Timer" does not create two time entries
+- [ ] Rapid-clicking task checkboxes (Today view, subtasks) — each click is debounced, final state is correct
+
+**Links and navigation:**
+- [ ] Double-clicking a navigation link does not push the same route twice onto history
+- [ ] Rapid-clicking project cards / client cards does not open multiple detail pages
+
+---
+
+### 14.2 Browser Back Button
+
+**After successful form submission:**
+- [ ] Back button after Sign Up → does not show the sign-up form pre-filled (or re-submit)
+- [ ] Back button after Log In → does not show the login form (redirects to dashboard)
+- [ ] Back button after Create Client → goes to client list, not re-creates the client
+- [ ] Back button after Create Project → goes to project list, not re-creates
+- [ ] Back button after Save as Draft (invoice) → goes to invoice list, not re-creates
+- [ ] Back button after Record Payment → goes to invoice detail, not re-records payment
+- [ ] Back button after Password Reset → goes to login, not re-submits reset
+
+**Mid-form / mid-wizard:**
+- [ ] Back button while editing a client (unsaved changes) → "Unsaved changes" warning dialog
+- [ ] Back button while editing a task (unsaved changes) → warning or auto-save
+- [ ] Back button mid-invoice-wizard (Step 2 of 3) → goes to Step 1, preserving selections
+- [ ] Back button at Step 1 of invoice wizard → exits wizard with "discard changes?" warning
+- [ ] Back button while editing project details → warning if unsaved changes
+
+**After destructive actions:**
+- [ ] Back button after deleting a client → client list (not a 404 for the deleted client)
+- [ ] Back button after archiving a client → client list (archived client not in active view)
+- [ ] Back button after deleting a task → project board/list (not a 404)
+- [ ] Back button after deleting a time entry → time entries list
+
+**Modal/panel behavior:**
+- [ ] Back button while task detail modal is open → closes modal (not navigates away from project)
+- [ ] Back button while confirmation dialog is open → closes dialog (not navigates)
+- [ ] Forward button after closing a modal via back → re-opens modal (or is a no-op)
+
+---
+
+### 14.3 Browser Refresh (F5 / Ctrl+R)
+
+- [ ] Refresh on dashboard → reloads data, no errors
+- [ ] Refresh on project board → reloads board state from server (not stale client-side cache)
+- [ ] Refresh while editing a client form → unsaved changes lost, form reloads from server data (acceptable)
+- [ ] Refresh while typing in task description → unsaved text lost, no error
+- [ ] Refresh mid-invoice-wizard → wizard resets to step 1 (data lost is acceptable, no error state)
+- [ ] Refresh while timer is running → timer bar reappears with correct elapsed time (server-side)
+- [ ] Refresh while a file upload is in progress → upload cancelled, no partial file, no error on reload
+- [ ] Refresh on search results page → search query preserved in URL, results reload
+- [ ] Refresh on filtered views (client list, project list, task list) → filters preserved in URL params
+
+---
+
+### 14.4 Multi-Tab Usage
+
+**Simultaneous editing:**
+- [ ] Edit the same client in Tab A and Tab B → save in Tab A → Tab B still shows stale data → save in Tab B → overwrites Tab A's changes (last-write-wins is acceptable, no crash)
+- [ ] Edit the same task in Tab A and Tab B → same behavior, no data corruption
+- [ ] Edit business profile in two tabs → no corruption
+- [ ] Change account settings (name) in one tab, refresh the other → other tab shows updated name
+
+**Create in one tab, view in another:**
+- [ ] Create a client in Tab A → refresh client list in Tab B → new client appears
+- [ ] Start a timer in Tab A → Tab B shows timer bar on next navigation (or live via polling/websocket)
+- [ ] Stop a timer in Tab A → Tab B timer bar disappears on next interaction
+
+**Delete in one tab, view in another:**
+- [ ] Delete a client in Tab A → Tab B still shows client detail → click "Edit" in Tab B → 404 error
+- [ ] Delete a task in Tab A → Tab B still shows task in board → drag it → error toast, card removed
+- [ ] Archive a project in Tab A → Tab B still shows project list → refresh → project moved to archived
+- [ ] Delete a time entry in Tab A → Tab B still shows it in list → click edit → error
+
+**Session-affecting actions across tabs:**
+- [ ] Change password in Tab A → Tab B's next API call returns 401 → Tab B redirects to login
+- [ ] Log out in Tab A → Tab B's next API call returns 401 → Tab B redirects to login
+- [ ] Delete account in Tab A → Tab B's next API call returns 401
+
+**Invoice concurrency:**
+- [ ] Create invoice in Tab A and Tab B simultaneously → each gets a unique invoice number
+- [ ] Record payment in Tab A → Tab B shows stale balance → record overlapping payment in Tab B → error "payment exceeds balance" or last-write-wins safely
+
+---
+
+### 14.5 Session Expiration Mid-Action
+
+- [ ] Session expires while typing in a client edit form → click save → 401 → redirect to login with return URL → log in → return to client edit (form data gone, acceptable)
+- [ ] Session expires while filling out invoice wizard at step 3 → click save → 401 → redirect to login → log in → wizard must restart (data lost, acceptable with clear messaging)
+- [ ] Session expires while a file upload is in progress → upload fails → error message → redirect to login
+- [ ] Session expires while dragging a task on board → drop fires API call → 401 → card reverts → redirect to login
+- [ ] Session expires while timer is running → timer is server-side so it continues → on re-login timer is still active
+- [ ] Session expires while recording a payment → payment fails → redirect to login → payment not recorded (no partial state)
+- [ ] Session expires while changing password → password change fails → redirect to login → old password still works
+- [ ] Idle timeout warning: show "Session expiring in 5 minutes" banner (if implemented)
+- [ ] After session expiry redirect to login, the return URL correctly deep-links back to the exact page the user was on
+
+---
+
+### 14.6 Paste Extremely Long Text
+
+Test every text input with 50,000+ characters pasted from clipboard.
+
+**Short text fields (names, emails, titles):**
+- [ ] Client name field (max 200 chars): paste 50K chars → truncated or rejected with clear message, browser doesn't freeze
+- [ ] Project name field (max 200 chars): same behavior
+- [ ] Task title field (max 500 chars): same behavior
+- [ ] Email field: paste very long string → validation catches it
+- [ ] Search field: paste 10K chars → search truncated or rejected, no server error
+
+**Long text fields (descriptions, notes):**
+- [ ] Task description: paste 100K chars → either accepted (with reasonable DB limit) or rejected with max-length error, no browser freeze
+- [ ] Client notes: paste 50K chars → same behavior
+- [ ] Invoice notes: paste 50K chars → same behavior
+- [ ] Business profile payment instructions: paste 50K chars → same behavior
+- [ ] Time entry description: paste 50K chars → same behavior
+
+**Rich text and special content:**
+- [ ] Paste text from Microsoft Word (contains hidden HTML/XML formatting) → stripped to plain text or safely rendered
+- [ ] Paste text from Google Docs → same behavior
+- [ ] Paste text containing HTML tags (`<b>bold</b>`, `<script>alert(1)</script>`) → sanitized, XSS prevented
+- [ ] Paste text containing markdown → rendered as markdown (if field supports it) or shown literally
+- [ ] Paste containing only whitespace/newlines → treated as empty or minimal content
+- [ ] Paste containing null bytes (`\0`) → stripped, no server error
+- [ ] Paste containing emoji (🎉🚀💰) → accepted and displayed correctly
+- [ ] Paste containing RTL text (Arabic: مرحبا, Hebrew: שלום) → displayed correctly, layout doesn't break
+- [ ] Paste containing zalgo text (ẗ̶̢̧̛̫̣̥̹̝̮̳̙̙̮̭̤̰̰̮̻̣̲̙̯̘̟̻̹͉̫́h̵̡̛̟̣̲̘̃̇̃̈̋̔̐̽̈́i̶s̶) → accepted, displayed correctly, doesn't break layout
+
+---
+
+### 14.7 Keyboard Navigation & Shortcuts
+
+- [ ] Tab key cycles through all form fields in logical order on every form
+- [ ] Shift+Tab moves backwards through fields
+- [ ] Enter key submits the currently focused form (where appropriate)
+- [ ] Escape key closes open modals (task detail, confirmation dialogs, dropdown menus)
+- [ ] Escape key cancels in-progress edits (inline editing) without saving
+- [ ] Focus is trapped inside open modals (Tab does not cycle to background elements)
+- [ ] Focus returns to the trigger element after a modal is closed
+- [ ] Dropdown menus are navigable with arrow keys
+- [ ] Date pickers are keyboard-accessible
+- [ ] Confirmation dialogs are focusable and dismissable with keyboard (Enter to confirm, Escape to cancel)
+- [ ] Skip-to-content link exists for keyboard/screen reader users
+- [ ] No keyboard traps anywhere in the app (user can always Tab away)
+
+---
+
+### 14.8 File Upload Edge Cases
+
+- [ ] Drag-and-drop file upload works (not just click-to-browse)
+- [ ] Drag a file over the drop zone → visual highlight/indicator
+- [ ] Drop a file outside the drop zone → nothing happens (no navigation, no error)
+- [ ] Upload a 0-byte (empty) file → rejected with clear error
+- [ ] Upload a file with a very long filename (255+ characters) → truncated or rejected
+- [ ] Upload a file with Unicode characters in filename (日本語.pdf) → handled correctly
+- [ ] Upload a file with special characters in filename (`file (1).pdf`, `file&name.doc`) → handled correctly
+- [ ] Upload multiple files simultaneously (if supported) → all upload with correct progress
+- [ ] Cancel an upload mid-progress → upload stops, no partial file saved, UI resets
+- [ ] Upload with slow connection → progress bar updates accurately, no timeout before 25 MB is done
+- [ ] Upload a file that passes client-side checks but fails server-side validation → clear error, UI resets
+- [ ] Upload the same file twice → second upload succeeds with a unique name or replaces with confirmation
+- [ ] Drag-and-drop a folder → rejected gracefully (not silent failure or crash)
+- [ ] Paste a screenshot from clipboard into a file upload area (if supported)
+
+---
+
+### 14.9 URL Manipulation & Deep Links
+
+- [ ] Manually type a non-existent route (e.g., `/nonexistent`) → 404 page
+- [ ] Manually type a valid resource with a non-existent ID (e.g., `/clients/999999`) → 404
+- [ ] Manually type a string where a numeric ID is expected (e.g., `/clients/abc`) → 404 or redirect
+- [ ] Manually type a negative ID (e.g., `/clients/-1`) → 404
+- [ ] Manually type a float ID (e.g., `/clients/1.5`) → 404
+- [ ] Manually type a SQL injection in the URL (e.g., `/clients/1;DROP TABLE users`) → safe 404
+- [ ] Bookmark a project board URL → revisiting later loads correctly (if still authenticated and authorized)
+- [ ] Share a deep link via email/chat → recipient can access if authenticated, redirected to login if not
+- [ ] Bookmark a task modal URL → revisiting opens the correct task in the correct project
+- [ ] Access a URL for a resource the user previously had access to but was deleted → 404
+
+---
+
+### 14.10 Print & Export
+
+- [ ] Print (Ctrl+P) on invoice detail → print layout is readable (no navigation, no timer bar, just invoice content)
+- [ ] Print on any other page → reasonable print output (no broken layouts)
+- [ ] PDF export of invoice → matches on-screen invoice, correct totals, readable formatting
+- [ ] Time entry export → CSV/Excel contains all visible columns, correct data, proper encoding for Unicode
+- [ ] Export with filters applied → only exports filtered results (not all data)
+
+---
+
+### 14.11 Browser & Device Edge Cases
+
+- [ ] 200% browser zoom → layout remains usable, no overlapping elements, no horizontal scroll on main content
+- [ ] 400% browser zoom → critical content still accessible (WCAG 1.4.10)
+- [ ] Screen rotation on mobile (portrait → landscape → portrait) → layout adapts, no data loss, no scroll position reset
+- [ ] Split-screen / multitasking on iPad → app is usable at half-width
+- [ ] System dark mode preference → app respects or has its own toggle (no invisible text on dark background)
+- [ ] System "reduce motion" preference → animations are reduced or disabled
+- [ ] High contrast mode → text remains readable, focus indicators visible
+- [ ] Very narrow viewport (320px, iPhone SE) → all critical functionality accessible
+- [ ] Very wide viewport (2560px, ultrawide monitor) → layout doesn't stretch absurdly, content is readable
+- [ ] Incognito/private browsing mode → app works (no reliance on localStorage for critical function)
+
+---
+
+### 14.12 Network Interruption Mid-Action
+
+- [ ] Wi-Fi drops while saving a client edit → error toast "Network error, please try again", form data preserved
+- [ ] Wi-Fi drops while uploading a file → upload fails, progress resets, user can retry
+- [ ] Wi-Fi drops while timer is running → timer continues server-side, timer bar shows "reconnecting..." or stale time
+- [ ] Wi-Fi drops while loading dashboard → partial load shows what arrived, error for failed widgets
+- [ ] Wi-Fi returns after outage → pending actions auto-retry (if implemented) or user retries manually
+- [ ] Airplane mode toggle during any action → no crash, no silent data loss
+- [ ] Server returns 502/503 (deploy/restart) → user sees "service temporarily unavailable" not a white screen
+
+---
+
+### 14.13 Undo & Regret Actions
+
+- [ ] After archiving a client → "Undo" option available (toast with undo link, or unarchive action)
+- [ ] After completing a task → can revert status back to previous state
+- [ ] After deleting a subtask → deletion is immediate but confirmed first (no undo for hard deletes)
+- [ ] After sending an invoice → cannot unsend (status change is permanent) — this is clearly communicated before sending
+- [ ] After recording a payment → payment can be deleted (if invoice is not fully paid? or always?)
+- [ ] After stopping a timer → can edit the resulting time entry immediately
+- [ ] After discarding a timer → time is gone (clearly warned before discard with "Are you sure?")
+- [ ] Ctrl+Z in text fields → browser native undo works (not broken by custom input handlers)
+
+---
+
+### 14.14 Accessibility (WCAG 2.1 AA)
+
+- [ ] All images have alt text (logos, client avatars, file thumbnails)
+- [ ] All form inputs have associated labels (visible or `aria-label`)
+- [ ] Error messages are announced by screen readers (`role="alert"` or `aria-live`)
+- [ ] Loading states are announced by screen readers (`aria-busy`, `aria-live`)
+- [ ] Color is not the only indicator of status (e.g., invoice badges have text, not just color)
+- [ ] Contrast ratio meets WCAG AA (4.5:1 for normal text, 3:1 for large text)
+- [ ] Focus indicators are visible on all interactive elements
+- [ ] Drag-and-drop has an alternative interaction (keyboard move, dropdown status change)
+- [ ] Timer display is not the only way to know a timer is running (screen reader announcement)
+- [ ] Calendar has keyboard navigation and screen reader support
+- [ ] Data tables have proper header associations (`scope`, `aria-labelledby`)
+- [ ] Page titles are descriptive and unique per page
+- [ ] Landmark regions are defined (`nav`, `main`, `aside`, `header`, `footer`)
 
 ---
 
