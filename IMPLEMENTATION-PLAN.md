@@ -2,7 +2,7 @@
 
 > Step-by-step technical blueprint for building TaskFlow from the current UI mockup into a fully functional production application.
 > This is the **single source of truth** during the build phase.
-> Read alongside [APPLICATION-PLAN.md](./APPLICATION-PLAN.md), [QA-CHECKLIST.md](./QA-CHECKLIST.md), and [DATA-MODEL-AUDIT.md](./DATA-MODEL-AUDIT.md).
+> Read alongside [APPLICATION-PLAN.md](./APPLICATION-PLAN.md), [QA-CHECKLIST.md](./QA-CHECKLIST.md), [DATA-MODEL-AUDIT.md](./DATA-MODEL-AUDIT.md), and [EDGE-CASE-AUDIT.md](./EDGE-CASE-AUDIT.md).
 
 ### Data Model Audit Fixes Applied
 
@@ -32,6 +32,18 @@ All 22 issues from [DATA-MODEL-AUDIT.md](./DATA-MODEL-AUDIT.md) have been accept
 | #20 | Missing field | `FileAttachment.upload_source` enum (owner/portal) added |
 | #21 | Missing indexes | FK indexes added for all commonly queried columns |
 | #22 | Docs note | Completed → Cancelled requires two-step workaround (documented as intentional) |
+
+### Edge Case Audit Fixes Applied
+
+All 31 issues from [EDGE-CASE-AUDIT.md](./EDGE-CASE-AUDIT.md) have been incorporated. Key changes:
+
+| Category | Key Fix | Sections Updated |
+|----------|---------|-----------------|
+| Session expiry | Centralized 401 detection in `apiFetch()` wrapper, localStorage key pattern, dedup flag, timer resilience | D.9 |
+| Entity deleted while viewed | SWR 404 handling on detail pages → toast + redirect to parent list | D.11 (new) |
+| Concurrent edits | Optimistic locking via `updated_at` on all PATCH routes; entity-level conflict resolution | B.3, E.3 |
+| Pagination | Cursor-based pagination on all list endpoints (default 25, max 100) | B.6 (new) |
+| External service failures | Rate limiter fails open; invoice send rolls back on email failure; 503 error page for DB outage | A.5, C.7, D.3 |
 
 ---
 
@@ -263,6 +275,7 @@ Implement custom auth matching APPLICATION-PLAN.md §4.1 exactly.
   - File upload: 10/hour per user
   - Invoice email: 5/hour per user
 - Apply as middleware in API routes
+- **Failure mode: fail open.** Wrap `rateLimit.api()` in try/catch. On Redis connection error, log to Sentry and allow the request. A temporarily unprotected app is better than a completely broken one. Redis outages are rare and brief
 
 ### A.6 Deployment Pipeline
 
@@ -281,6 +294,7 @@ Implement custom auth matching APPLICATION-PLAN.md §4.1 exactly.
 - Initialize Sentry in `next.config.mjs`
 - Add `sentry.client.config.ts` and `sentry.server.config.ts`
 - Wire to `error.tsx` error boundary
+- **Sentry failure:** the Sentry SDK handles its own connection failures silently (does not throw). Errors are also logged to `console.error` for Netlify function logs as a secondary record
 
 ---
 
@@ -408,6 +422,7 @@ Create `src/lib/validations/` with one file per entity, matching APPLICATION-PLA
 - `client.ts` — name (required, max 200), email (valid if provided), hourly_rate (non-negative), payment_terms (positive integer)
 - `project.ts` — name (required, max 200), billing_type (required), hourly_rate/fixed_price (conditional), deadline (future date), budget_hours (non-negative)
 - `task.ts` — title (required, max 500), due_date (valid date), priority (enum), no self-dependency, same-project dependency
+- `project.ts` also validates: reject project creation if `client.is_archived = true` → 422: "Cannot create a project for an archived client."
 - `time-entry.ts` — project_id (required), duration (1–1440 min), start_time (not future), end_time (after start)
 - `invoice.ts` — at least one line item, total > 0, payment ≤ balance_due
 - `subtask.ts` — title (required)
@@ -455,6 +470,29 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(client, { status: 201 })
 }
 ```
+
+**Optimistic locking on updates (all PATCH routes):**
+
+Every PATCH request must include `updated_at` from the client's last read. The server compares it against the current `updated_at`:
+
+```typescript
+// In every PATCH handler:
+const { updated_at: clientUpdatedAt, ...updateData } = parsed.data
+const result = await db.client.updateMany({
+  where: { id: params.id, user_id: session.userId, updated_at: clientUpdatedAt },
+  data: { ...updateData, updated_at: new Date() }
+})
+if (result.count === 0) {
+  const exists = await db.client.findFirst({ where: { id: params.id, user_id: session.userId } })
+  if (!exists) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  return NextResponse.json(
+    { error: 'Conflict: this record was modified. Please reload and try again.', current: exists },
+    { status: 409 }
+  )
+}
+```
+
+On 409, the client shows: "This record was modified in another session. [Reload]"
 
 ### B.4 API Routes — Full List
 
@@ -591,6 +629,40 @@ Implement APPLICATION-PLAN.md §5.5 in service layer (not just Prisma cascades).
 | **Time Entry** | — | — | Blocked if is_invoiced = true |
 | **Account** | Everything (all entities, sessions, tokens, activity log, blocked time, notification prefs) | — | Set `scheduled_deletion_at` = now(); immediate logout; daily job hard-deletes 30 days later (fix #9) |
 
+### B.6 Pagination Pattern
+
+All list endpoints use cursor-based pagination:
+
+**Request:** `?cursor=<last_id>&limit=<n>` (default limit 25, max 100)
+
+**Response:**
+```json
+{
+  "data": [...],
+  "nextCursor": "uuid-of-last-item" | null,
+  "hasMore": true | false,
+  "totalCount": 142
+}
+```
+
+**Paginated endpoints:**
+- `GET /api/clients` — 25 per page
+- `GET /api/projects` — 25 per page
+- `GET /api/tasks` — 25 per page (cross-project list)
+- `GET /api/time-entries` — 50 per page (denser data)
+- `GET /api/invoices` — 25 per page
+- `GET /api/notifications` — 20 per page
+- `GET /api/activity` — 20 per page
+- `GET /api/search` — 5 per entity type in dropdown; 20 per page on full results page (max 100 total)
+
+**Exceptions (load all):**
+- `GET /api/projects/[id]/tasks` — board view loads all tasks in project (capped at 500; warn if exceeded)
+- `GET /api/invoices/[id]/line-items` — all items (typically < 50)
+- `GET /api/calendar?month=X` — all events for visible month range (bounded by date)
+- `GET /api/projects/[id]/milestones` — all milestones (typically < 20)
+
+**Client-side:** Use "Load more" button or infinite scroll depending on context. Lists use "Load more". Activity feed and notifications use infinite scroll.
+
 ---
 
 **DEPENDENCIES:** Phase A must be complete (database exists, auth works).
@@ -647,7 +719,7 @@ Connect existing mockup forms to Phase A API routes.
 
 **Implementation details:**
 - Dashboard: 4 stat cards with links → each calls a dedicated aggregation endpoint or `GET /api/dashboard`
-- Recent activity feed: `GET /api/activity` → reads from `ActivityLog` table (fix #14), showing latest actions (client created, task completed, invoice sent, etc.)
+- Recent activity feed: `GET /api/activity?limit=20` → reads from `ActivityLog` table (fix #14), showing latest actions (client created, task completed, invoice sent, etc.). "Load more" button fetches next page via cursor pagination.
 - Today view: `GET /api/tasks?due_date=today&include_overdue=true` grouped by project/client
 - Empty state for new users: onboarding prompts ("Add your first client →")
 - Start timer action: `POST /api/timer/start` with task_id
@@ -680,8 +752,10 @@ Connect existing mockup forms to Phase A API routes.
 - Project list: `GET /api/projects` with client/status filters
 - Project creation: multi-field form → `POST /api/projects` (with optional template)
 - Board view: `GET /api/projects/[id]/tasks` → render Kanban columns via @dnd-kit
-  - Drag-and-drop: `PATCH /api/tasks/[id]` to update status + position
-  - Optimistic updates: move card immediately, revert on API failure
+  - Drag-and-drop: `PATCH /api/tasks/[id]` to update status + position (include `updated_at` for optimistic locking)
+  - Optimistic updates: move card immediately, revert on API failure. On 409 (conflict), snap card back to server position and show toast.
+  - **Stale data sync:** SWR with `revalidateOnFocus: true` and `refreshInterval: 30000` (30s). On tab focus, board refetches and reconciles.
+  - **Large boards:** if > 100 tasks in a single column, virtualize with `react-window`. If project exceeds 500 tasks total, show warning and suggest list view.
 - List view: same data, table layout with sort + bulk actions
 - Overview: project summary + milestones CRUD + file management + portal token
 - Status changes: `PATCH /api/projects/[id]` with side effects (stop timers, warn on incomplete tasks)
@@ -700,6 +774,7 @@ Connect existing mockup forms to Phase A API routes.
 - Task detail slide-over: `GET /api/tasks/[id]` with full relations
 - Subtask CRUD: inline within slide-over
 - File upload: Uploadthing presigned upload, attach to task
+  - **Upload service failure:** if Uploadthing presigned URL request fails, show inline error: "File upload is temporarily unavailable. Please try again later." Allow saving the entity without the file.
 - Dependencies: add/remove with validation
 - Timer integration: start/stop from task detail
 
@@ -714,10 +789,12 @@ Connect existing mockup forms to Phase A API routes.
 **Implementation details:**
 - Timer bar (global component in authenticated layout):
   - `GET /api/timer/current` on mount → show bar if timer running
-  - Timer display: compute elapsed from `start_time` + server sync on focus
+  - Timer display: compute elapsed from `start_time` + `Date.now()` (client-side); server sync on tab focus via `GET /api/timer/current`
+  - **Polling:** `GET /api/timer/current` every 30 seconds to detect changes from other tabs (e.g., timer stopped/started elsewhere)
+  - **Cross-tab conflict:** if response differs from local state (different task, no timer), update timer bar immediately
   - Stop: `POST /api/timer/stop` → create entry
   - Start new: `POST /api/timer/start` → auto-pause existing
-- Time entries page: `GET /api/time-entries` with filters + grouping
+- Time entries page: `GET /api/time-entries` with filters + grouping. **Default date range: current month.** User can expand. Summary stats (total hours, billable amount) computed server-side for the filtered range and returned alongside paginated data.
 - Manual entry form: `POST /api/time-entries`
 - Export: `GET /api/time-entries/export?format=csv`
 - Billable toggle: affects `amount` calculation (duration × hourly_rate)
@@ -747,8 +824,19 @@ Connect existing mockup forms to Phase A API routes.
   Wrap in a transaction with invoice creation. The composite unique `@@unique([userId, invoiceNumber])` (fix #12) is the safety net.
 - **Snapshot fields** populated on invoice creation (fix #10): `client_name`, `client_email`, `client_address`, `project_name`. On send: also populate `from_business_name`, `from_address`, `from_logo_url` from current BusinessProfile.
 - **issued_date** set to null on draft creation; set to current date on Draft → Sent transition (fix #11)
-- Send: `POST /api/invoices/[id]/send` → email via Resend, mark entries as invoiced, write ActivityLog entry
-- Record payment: `POST /api/invoices/[id]/payments` → update status
+- **Invoice creation concurrency guard:** within the creation transaction, verify each selected time entry has `is_invoiced = false` and each milestone has `status = 'completed'`. If any are already invoiced, return 409: "These time entries have already been invoiced: [list]. Please refresh and try again."
+- **Invoice creation FK guard:** validate that `client_id` and `project_id` still exist within the transaction. On FK violation, return 404: "The selected client or project no longer exists. Please start over." Frontend: show error and reset wizard to step 1.
+- Send: `POST /api/invoices/[id]/send` → **transactional with rollback on email failure:**
+  1. Begin transaction
+  2. Update invoice status to "sent", set `issued_date`, populate snapshot fields, mark time entries/milestones
+  3. Attempt email send via Resend
+  4. If email succeeds: commit, set `sent_at`
+  5. If email fails: rollback all changes, return 502: "Invoice could not be sent. The email service is temporarily unavailable. Please try again."
+- Record payment: `POST /api/invoices/[id]/payments` → **pessimistic lock to prevent overpayment:**
+  ```sql
+  SELECT balance_due FROM invoices WHERE id = $1 FOR UPDATE
+  ```
+  If `payment_amount > balance_due`, return 422: "Payment of $X exceeds remaining balance of $Y."
 - PDF: `GET /api/invoices/[id]/pdf` → @react-pdf/renderer (uses snapshot fields, not live lookups)
 - Business profile: `GET/PATCH /api/business-profile`
 - Invoice overdue automation (with fix #15): Scheduled function checks daily: `WHERE status IN ('sent','partial') AND due_date < today AND balance_due > 0` → set status = 'overdue', create notification. **Once overdue, partial payments keep status as Overdue** (prevents Partial ↔ Overdue oscillation and duplicate notifications)
@@ -766,6 +854,7 @@ Connect existing mockup forms to Phase A API routes.
 - Blocked time CRUD: `POST/PATCH/DELETE /api/calendar/blocked-time` (fix #7 — new entity and API)
 - Build calendar grid with date-fns
 - Color-code by client
+- **Dense months:** calendar loads all events for the visible month (single bounded query). For days with > 3 events, collapse into summary dots with count badge. Click to expand shows event list.
 - Blocked time shown in distinct style (grayed out, hatched pattern)
 - Mobile: switch to agenda/list view
 
@@ -785,6 +874,7 @@ Connect existing mockup forms to Phase A API routes.
 - Search: `GET /api/search?q=` → PostgreSQL full-text search via GIN indexes → results grouped by type
   - Debounce on client (300ms)
   - Highlight matching terms in snippets
+  - **Result limits:** dropdown shows top 5 per entity type. Full search results page uses cursor pagination (20 per page, max 100 total). Server limits query to prevent full-table scans.
 
 ### C.10 Client Portal
 
@@ -803,7 +893,7 @@ Connect existing mockup forms to Phase A API routes.
 
 **Implementation details:**
 - **Bell component** in authenticated layout header: `GET /api/notifications?unread=true` → badge count
-- **Dropdown**: list of notifications with type icon, message, timestamp
+- **Dropdown**: last 10 unread + 10 recent read notifications with type icon, message, timestamp. "View all" link goes to full notifications page with cursor pagination.
 - **Mark read**: `PATCH /api/notifications/[id]/read`
 - **Mark all read**: `POST /api/notifications/mark-all-read`
 - **Click**: navigate to `reference_type` (now enum: task/project/invoice — fix #19) / `reference_id`
@@ -909,6 +999,7 @@ Verify every list/table has a meaningful empty state with a CTA:
 
 - **`/not-found.tsx`** (404): "We couldn't find what you're looking for." + link to dashboard
 - **`/error.tsx`** (500): "Something went wrong on our end." + "Return to Dashboard" button + Sentry error ID
+- **503 Service Unavailable** — database unreachable: Prisma throws `PrismaClientInitializationError` or connection timeout. Global error handler returns 503: "Service temporarily unavailable. Please try again in a few moments." Error page shows retry button. `/api/health` returns `{ status: 'unhealthy', database: 'unreachable' }`.
 - **Error boundary** per major section: isolate failures (one widget crash doesn't take down the page)
 
 ### D.4 Toast Notifications
@@ -966,11 +1057,26 @@ Key mobile adaptations:
 - Disable server-dependent actions (form submits, timer operations)
 - Re-enable on reconnect
 
-### D.9 Form Data Preservation
+### D.9 Session Expiry & Form Data Preservation
 
-- On session expiry mid-form: save form state to `localStorage`
-- After re-login: restore form state from `localStorage` and clear
-- Applies to: all create/edit forms, invoice wizard
+**Detection mechanism:** A centralized `apiFetch()` wrapper handles all API calls. On 401 response:
+1. Set module-level `isRedirecting = true` flag (prevents duplicate redirects from concurrent requests)
+2. If a form is active, serialize form state to `localStorage` keyed by `taskflow:form:<route_path>` (e.g., `taskflow:form:/clients/new`)
+3. If an optimistic update is in flight (e.g., drag-and-drop), revert it first before redirecting
+4. Redirect to `/login?returnUrl=<current_path>`
+5. Subsequent 401s in the same tick are no-ops (checked via `isRedirecting` flag)
+
+**After re-login:**
+- Redirect to `returnUrl`
+- Page checks `localStorage` for key matching current route
+- If found, hydrate form with saved state and clear the key
+- Show toast: "Your previous work has been restored."
+
+**Invoice wizard:** Serialize full wizard state (current step, selected client ID, project ID, selected entry/milestone IDs, custom line items, tax rate, notes) to `localStorage` under key `taskflow:form:invoice-wizard-draft`. Restore on return. Clear on successful save or intentional discard.
+
+**Timer during session expiry:** Timer continues server-side (tracked by `start_time`). On re-login, `GET /api/timer/current` restores timer bar with correct elapsed time computed from `start_time`.
+
+**Applies to:** all create/edit forms, invoice wizard, settings forms
 
 ### D.10 Meta Tags & SEO
 
@@ -979,6 +1085,25 @@ Key mobile adaptations:
 - OpenGraph tags for landing page (social sharing)
 - `robots: noindex` on all authenticated pages
 - Favicon and web manifest
+
+### D.11 Stale Data Recovery
+
+Handle the case where an entity is deleted (directly or via cascade) while the user is viewing it in another tab or after navigating away and back.
+
+**Detail page 404 on revalidation:**
+- Every SWR hook on detail pages (client, project, task, invoice) handles 404 on revalidation
+- On 404: show toast "This [entity type] has been deleted", redirect to parent list page after 2 seconds, revalidate the list cache
+- Example: viewing `/projects/123/board`, project gets cascade-deleted → board revalidates → 404 → toast + redirect to `/projects`
+
+**Mutation 404:**
+- Any mutation (PATCH, DELETE, POST to child) that returns 404 triggers: show toast "This [entity type] no longer exists", close any open modal/slide-over, redirect to parent list
+
+**Task detail slide-over:**
+- On 404 from subtask toggle, note addition, or timer start: close slide-over, show toast, refresh parent board/list view (which will also handle its own 404 if the project is gone)
+
+**Invoice wizard FK validation:**
+- Invoice creation validates `client_id` and `project_id` exist within the transaction
+- On FK violation: return 404 with message "The selected client or project no longer exists. Please start over." Frontend resets wizard to step 1.
 
 ---
 
@@ -1075,10 +1200,14 @@ Run through QA-CHECKLIST.md §14:
 
 ### E.3 Concurrent Operation Safety
 
-- [ ] Two tabs editing same entity → 409 Conflict or last-write-wins (no 500)
-- [ ] Two tabs with timers → only one active timer enforced server-side
-- [ ] Rapid form submissions → debounced client-side + server-side idempotency where critical
-- [ ] Simultaneous invoice creation → unique invoice numbers guaranteed (database unique constraint + next_invoice_number atomic increment)
+**Strategy: optimistic locking (entity-level, not field-level).** Every PATCH includes `updated_at` from last read. Server rejects with 409 if stale. On 409, client shows current server state and user re-applies changes. Field-level merging is out of scope (adds significant complexity for a single-user app).
+
+- [ ] Two tabs editing same entity → 409 Conflict via optimistic locking (B.3 pattern). Client receives current entity data and shows "This record was modified. [Reload]"
+- [ ] Two tabs with timers → only one active timer enforced server-side; timer bar polls every 30s + syncs on focus (C.6)
+- [ ] Rapid form submissions → debounced client-side (disable button on submit) + server-side idempotency where critical
+- [ ] Simultaneous invoice creation → unique invoice numbers guaranteed (database unique constraint + `next_invoice_number` atomic increment); time entry double-invoicing prevented by `is_invoiced` check within transaction (C.7)
+- [ ] Concurrent payment recording → pessimistic lock via `SELECT ... FOR UPDATE` prevents overpayment (C.7)
+- [ ] Kanban concurrent moves → optimistic locking on task `updated_at`; second drag returns 409, card snaps back (C.4)
 
 ### E.4 Deletion Cascade Verification
 
