@@ -806,7 +806,6 @@ Connect existing mockup forms to Phase A API routes.
 - **Dropdown**: list of notifications with type icon, message, timestamp
 - **Mark read**: `PATCH /api/notifications/[id]/read`
 - **Mark all read**: `POST /api/notifications/mark-all-read`
-- **Click**: navigate to `reference_type`/`reference_id`
 - **Click**: navigate to `reference_type` (now enum: task/project/invoice — fix #19) / `reference_id`
 - **Notification triggers** (background/scheduled):
   - Read user's `NotificationPreference` record (fix #5) to determine which notifications are enabled
