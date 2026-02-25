@@ -23,6 +23,7 @@
 14. [Performance Tests](#14-performance-tests) — Load Times, Data Volume, Concurrency, Network Resilience
 15. [Accessibility Tests](#15-accessibility-tests) — Keyboard, Screen Reader, Visual
 16. [Cross-Browser & Device Tests](#16-cross-browser--device-tests)
+17. [Real-User Behavior & Chaos Tests](#17-real-user-behavior--chaos-tests) — Double-clicks, Back/Forward Button, Multi-Tab, Paste Bombs, Autofill, Locale, File Uploads, Refresh Mid-Action, Deep Links, Zoom, Extensions, Rapid Nav, Right-Click, Drag-and-Drop, Timer Drift
 
 ---
 
@@ -105,7 +106,12 @@
 - [ ] Unicode characters in name field (e.g., "José", "田中太郎", "🙂") → accepted and stored correctly
 - [ ] Email with valid but unusual format (e.g., `user+tag@example.com`) → accepted
 - [ ] Back button after successful signup → does not re-submit form
+- [ ] Back button mid-form (after filling fields, before submit) → form state preserved or cleanly reset
+- [ ] Browser refresh while filling form → fields cleared, no phantom submission
 - [ ] Pasting content into fields → validation runs correctly
+- [ ] Pasting 100KB+ text into name field → gracefully truncated or rejected, no browser freeze
+- [ ] Password manager autofill populates fields → validation recognizes filled state (no "field is required" on autofilled fields)
+- [ ] Browser autofill (saved email/name) → form accepts autofilled values without requiring re-type
 
 ---
 
@@ -182,6 +188,8 @@
 - [ ] Extremely long email (>320 chars) → rejected gracefully
 - [ ] Authenticated user visiting `/login` → redirected to `/dashboard`
 - [ ] Login preserves return URL (e.g., user was at `/projects/123`, session expired, after re-login → back to `/projects/123`)
+- [ ] Password manager autofill → login works without manual typing
+- [ ] Double-click login button → only one authentication attempt, no duplicate session
 
 ---
 
@@ -460,6 +468,9 @@
 - [ ] Creating two clients with the same name → allowed (names are not unique)
 - [ ] Closing form mid-edit without saving → data is discarded (or confirmation prompt)
 - [ ] Very long notes field (10,000+ chars) → saved correctly
+- [ ] Pasting rich text from Word/Google Docs into notes field → HTML stripped, plain text saved (no hidden formatting renders or breaks layout)
+- [ ] Double-click "Create Client" button → only one client created
+- [ ] Browser back button after successful creation → returns to previous page (not re-submit)
 
 ---
 
@@ -529,6 +540,9 @@
 - [ ] Creating project for newly-created client (inline) → both client and project created
 - [ ] Client has no default hourly rate → hourly rate field is empty, must be manually set
 - [ ] Closing form mid-edit → data discarded (or confirmation prompt)
+- [ ] Double-click "Create Project" button → only one project created
+- [ ] Entering hourly rate as "150,00" (European locale with comma) → handled correctly (rejected with hint or parsed as 150.00)
+- [ ] Browser back button during multi-step project creation → returns to previous step (not discard all)
 
 ---
 
@@ -612,6 +626,11 @@
 - [ ] Rapid drag-and-drop (moving multiple tasks quickly) → all updates save correctly
 - [ ] Dragging task to same column → no change, no error
 - [ ] Moving task to Done → running timer on that task is stopped
+- [ ] Dropping task outside any column (into empty space) → drag cancelled cleanly, task stays in original column
+- [ ] Browser refresh mid-drag → page reloads cleanly, task in last-saved position
+- [ ] Two tabs open on same board: drag task in tab A, tab B shows stale state → tab B refreshes or updates via polling/websocket
+- [ ] Drag on touch device (long press + drag) → works or offers alternative (status dropdown)
+- [ ] Right-click a task card → browser context menu appears (not broken by drag handler)
 
 ---
 
@@ -637,6 +656,7 @@
 **Edge Cases:**
 - [ ] Sorting by due date with some tasks having no due date → null dates sort last
 - [ ] Bulk-selecting all tasks and changing status → all update correctly
+- [ ] Double-click bulk action button → only one batch update executed
 - [ ] 100+ tasks → pagination or virtual scrolling
 
 ---
@@ -757,7 +777,12 @@
 - [ ] Rapidly toggling subtask checkboxes → all changes saved correctly
 - [ ] Adding a subtask with empty title → rejected
 - [ ] Very long description (10,000+ chars) → saved and displayed correctly
+- [ ] Pasting 100KB+ text into description field → truncated or rejected gracefully, no browser freeze or crash
+- [ ] Pasting rich text (from Word, Google Docs, email) into description → HTML stripped, only plain text saved
 - [ ] File with unusual filename (spaces, unicode, very long) → handled correctly
+- [ ] Session expires while editing task description → on next save attempt, redirect to login, edits preserved in localStorage
+- [ ] Editing same task in two browser tabs → last save wins without data corruption or 500 error (409 Conflict handled gracefully)
+- [ ] Opening task detail via deep link `/projects/prj_1/tasks/task_5` after session expires → redirected to login, return URL preserved, task opens after re-login
 
 ---
 
@@ -811,6 +836,11 @@
 - [ ] Group by day → entries grouped under date headers with daily subtotals
 - [ ] Group by client → entries grouped under client headers
 - [ ] Group by project → entries grouped under project headers
+- [ ] Double-click "Save" on manual time entry → only one entry created
+- [ ] Entering duration as "1,5" (European locale comma) → handled correctly (rejected with hint or parsed as 1.5 hours)
+- [ ] Entering hourly rate with thousand separator ("1,000") → parsed correctly or rejected with clear guidance
+- [ ] Browser back button after saving manual entry → returns to time list (not re-submit)
+- [ ] Editing an entry in two tabs → last save wins, no 500 error
 
 ---
 
@@ -833,6 +863,12 @@
 - [ ] Timer running on a task in a completed project → warning shown
 - [ ] Navigating between pages → timer bar persists and keeps counting
 - [ ] Network disconnect while timer running → timer continues locally, syncs on reconnect
+- [ ] Laptop sleep/wake with timer running → timer shows correct elapsed time on wake (no drift)
+- [ ] Switching browser tabs for 30+ minutes, returning → timer display updates to correct time immediately (not stuck at pre-switch value)
+- [ ] Two browser tabs open → timer bar shows consistently in both tabs (starting timer in tab A shows bar in tab B on focus)
+- [ ] Double-click "Stop" button → only one time entry created
+- [ ] Double-click "Start Timer" → only one timer starts (no phantom double entries)
+- [ ] Timezone change while timer is running (e.g., traveling, DST) → duration calculated correctly based on elapsed time, not wall-clock difference
 
 ---
 
@@ -908,6 +944,11 @@
 - [ ] Recording multiple partial payments → each recorded, balance decreases correctly
 - [ ] Invoice total with tax calculation → math is correct to the penny
 - [ ] Invoice with 0% tax → tax line hidden or shows $0.00
+- [ ] Double-click "Send Invoice" button → only one email sent, no duplicate invoice status change
+- [ ] Double-click "Record Payment" button → only one payment recorded
+- [ ] Entering payment amount with comma decimal separator ("500,00") → handled correctly
+- [ ] Recording payment in two browser tabs simultaneously → second attempt shows error or updated balance (no overpayment)
+- [ ] Browser back button after recording payment → returns to invoice (not re-submit payment)
 
 ---
 
@@ -948,6 +989,13 @@
 - [ ] Custom line item with very long description → saved correctly
 - [ ] Tax rate edge cases: 0%, 100%, 99.99% → calculations correct
 - [ ] Navigating away mid-creation → data lost (or draft auto-saved with confirmation)
+- [ ] Double-click "Save as Draft" → only one invoice created
+- [ ] Browser back button at step 2 → returns to step 1 (not exit wizard entirely)
+- [ ] Browser back button at step 3 → returns to step 2 with selections preserved
+- [ ] Browser refresh mid-wizard (at step 2 or 3) → wizard resets to step 1 (or draft auto-saved)
+- [ ] Session expires during multi-step wizard → form data saved to localStorage, restored after re-login
+- [ ] Entering tax rate with comma ("19,5%") → handled correctly (European locale)
+- [ ] Selecting/deselecting time entries rapidly → final selection state is accurate
 
 ---
 
@@ -975,6 +1023,10 @@
 - [ ] Logo upload: non-image file → rejected
 - [ ] Currency change with existing invoices → existing invoices retain their original currency
 - [ ] Invoice number prefix with special characters → handled correctly
+- [ ] Double-click "Save" on business profile → only one save request sent
+- [ ] User navigates away mid-logo-upload → upload cancelled cleanly, no orphaned file
+- [ ] Uploading logo on slow connection → progress indicator visible, cancel option available
+- [ ] Pasting very long text into payment instructions → saved correctly or truncated with feedback
 
 ---
 
@@ -1012,6 +1064,11 @@
 - [ ] Timezone changes → deadlines display in user's timezone
 - [ ] Task with no due date → does not appear on calendar
 - [ ] Same date has task deadline and project deadline → both shown
+- [ ] Rapid month navigation (clicking next/prev quickly 10+ times) → final month renders correctly, no stale data or race condition
+- [ ] Date picker locale: MM/DD vs DD/MM format → dates parsed correctly per user locale
+- [ ] Date picker starts week on Monday vs Sunday → respects user locale
+- [ ] Manually typing a date instead of using the picker → accepted if valid format
+- [ ] Clicking a date near midnight in a different timezone → correct day assigned
 
 ---
 
@@ -1051,6 +1108,11 @@
 **Edge Cases:**
 - [ ] Changing email to same email → no-op or gentle message
 - [ ] Very long name → appropriate max length
+- [ ] Double-click "Delete Account" confirmation → only one deletion attempt
+- [ ] Double-click "Save" on settings form → only one request sent
+- [ ] Browser back button after saving password change → returns to settings (not re-submit)
+- [ ] Session expires while filling password change form → edits are not lost (or user is clearly warned)
+- [ ] Opening account settings in two tabs, changing password in both → second tab's change uses stale "current password" and fails gracefully
 
 ---
 
@@ -1094,6 +1156,10 @@
 - [ ] Very long query → truncated or handled gracefully
 - [ ] Single character query → may show "Please enter at least 2 characters"
 - [ ] Search results show correct context snippets with highlighted matching terms
+- [ ] Rapid typing in search box → debounced, only final query sent (no request flood)
+- [ ] Pressing Enter while results are loading → does not duplicate request or cause race condition
+- [ ] Browser back button from search result page → returns to search results with query preserved
+- [ ] Pasting extremely long text (100KB+) into search → truncated or rejected, no browser freeze
 
 ---
 
@@ -1477,6 +1543,151 @@
 - [ ] 768px (tablet portrait) — appropriate layout shifts
 - [ ] 1024px (tablet landscape / small desktop) — sidebar visible
 - [ ] 1280px+ (desktop) — full layout with sidebar
+
+---
+
+## 17. Real-User Behavior & Chaos Tests
+
+> Cross-cutting tests for behaviors real users exhibit that fall outside "happy path" testing.
+> These tests apply across multiple pages and should be verified globally.
+
+### 17.1 Double-Click / Rapid-Click Protection
+
+- [ ] Every form submit button in the app is protected (disabled or debounced after first click)
+- [ ] Specifically verify: Sign Up, Log In, Create Client, Create Project, Add Task, Save Invoice, Record Payment, Send Invoice, Save Settings, Delete Account confirmation
+- [ ] Rapid-clicking "Start Timer" → only one timer starts
+- [ ] Rapid-clicking "Stop Timer" → only one time entry created
+- [ ] Rapid-clicking bulk action buttons → only one batch operation executed
+- [ ] Double-clicking "Export PDF" → only one PDF generated/downloaded
+- [ ] Double-clicking "Send by Email" → only one email sent
+
+### 17.2 Browser Back/Forward Button
+
+- [ ] Back button mid-form (partially filled, not submitted) → "Unsaved changes" warning or form state preserved
+- [ ] Back button after successful form submission → returns to previous page (not re-submit)
+- [ ] Back button during multi-step invoice wizard → returns to previous step (not exit wizard)
+- [ ] Forward button after going back from a form → no stale form resubmission, no re-POST dialog
+- [ ] Forward button after going back from a completed action → page loads normally (no duplicate action)
+- [ ] Rapid back/forward clicking → app does not crash or show broken state
+- [ ] Back button after logout → no authenticated content visible
+
+### 17.3 Multi-Tab Consistency
+
+- [ ] Editing same entity in two tabs → last save wins, no 500 error (409 Conflict handled gracefully)
+- [ ] Deleting entity in tab A while viewing in tab B → tab B shows error or redirects on next interaction (not crash)
+- [ ] Starting timer in tab A → timer bar appears in tab B on focus/refresh
+- [ ] Logging out in tab A → tab B redirects to login on next action
+- [ ] Creating entity in tab A → entity visible in tab B's list on refresh
+- [ ] Changing settings in tab A → tab B reflects new settings on refresh
+- [ ] Invoice paid in tab A → tab B still on invoice detail → status updates or shows conflict on next action
+
+### 17.4 Paste Bomb & Large Input
+
+- [ ] Pasting 100KB+ text into any text field → gracefully truncated or rejected, no browser freeze
+- [ ] Pasting 100KB+ into name fields (limited to 200 chars) → validation fires, no performance issue
+- [ ] Pasting 100KB+ into search box → truncated, debounced, no request flood
+- [ ] Pasting rich text from Word/Google Docs → HTML stripped, only plain text saved (no invisible formatting)
+- [ ] Pasting rich text from email client → no hidden HTML tags rendered in the UI
+- [ ] Pasting content with zero-width characters → does not break search, display, or validation
+- [ ] Pasting a URL into a text field → treated as plain text (not auto-linked unless explicitly supported)
+- [ ] Pasting a screenshot or image into a text field → ignored or handled gracefully (no crash)
+
+### 17.5 Autofill & Password Managers
+
+- [ ] Browser autofill on signup form → validation recognizes autofilled values (no "required" error on filled fields)
+- [ ] Browser autofill on login form → login works without manual interaction beyond submit
+- [ ] Password manager (1Password, LastPass, Bitwarden) fills login → form state updated, submit works
+- [ ] Password manager fills signup → all fields recognized as populated
+- [ ] Autofill on address fields (client creation) → values accepted
+- [ ] Autofill does not trigger unwanted form submissions
+- [ ] Autofill in Chrome, Firefox, and Safari → tested across browsers (each handles autofill differently)
+
+### 17.6 Locale & Internationalization Edge Cases
+
+- [ ] Comma as decimal separator in rate fields ("150,00") → handled correctly (rejected with hint or parsed)
+- [ ] Period as thousands separator with comma decimal ("1.500,50") → not misinterpreted
+- [ ] Date format ambiguity: 03/04/2026 → correct interpretation per locale (March 4 vs April 3)
+- [ ] Date picker localization: localized month/day names, correct week start (Mon vs Sun)
+- [ ] Timezone change mid-session (traveling, DST boundary) → no broken timestamps or duplicate entries
+- [ ] Currency symbol display matches user's selected currency (€, £, ¥, etc.)
+- [ ] Right-to-left (RTL) text in client names or notes → displayed correctly (if RTL support is in scope)
+- [ ] Unicode in all text fields: accented characters (é, ñ, ü), CJK characters (中文, 日本語), emoji → accepted and displayed
+
+### 17.7 File Upload Interruptions
+
+- [ ] Navigating away mid-upload → upload cancelled cleanly, no orphaned partial file on server
+- [ ] Closing browser tab mid-upload → partial upload cleaned up
+- [ ] Slow connection upload → progress indicator shown, cancel option available
+- [ ] Upload timeout (server-side) → clear error message, can retry
+- [ ] Resuming after failed upload → fresh upload works without conflicts
+- [ ] Uploading same file twice → either replaces or creates second copy (consistent behavior, no error)
+
+### 17.8 Browser Refresh Mid-Action
+
+- [ ] Refresh during form submission (POST in flight) → no duplicate entity created, or browser re-POST dialog handled
+- [ ] Refresh during drag-and-drop → board reloads with last-saved state
+- [ ] Refresh during file upload → upload aborted, can retry from scratch
+- [ ] Refresh during multi-step invoice wizard → wizard resets or draft auto-saved
+- [ ] Refresh on a filtered/sorted page → filters/sort preserved via URL params or reset cleanly
+
+### 17.9 Deep Linking & Bookmarking
+
+- [ ] Bookmarking a task detail URL → opens correctly days later (if still logged in)
+- [ ] Bookmarking a filtered view (e.g., `/tasks?status=done&sort=priority`) → filters applied on load
+- [ ] Sharing entity URL with another user → they see 403 (not crash or data leak)
+- [ ] Deep link to entity after session expires → redirected to login, return URL preserved, entity loads after re-login
+- [ ] Deep link to deleted entity → 404 page with clear message and link to parent
+- [ ] Deep link with trailing slash or extra path segments → handled gracefully (redirect or 404)
+
+### 17.10 Zoom & Text Scaling
+
+- [ ] Browser zoom at 200% → layout remains usable, no horizontal overflow on authenticated pages
+- [ ] Browser zoom at 200% → modals, dropdowns, and slide-overs still fully visible and interactive
+- [ ] OS-level font scaling (125%, 150%) → text readable, no element overlap
+- [ ] Pinch-to-zoom on mobile → works (viewport meta does not have `user-scalable=no`)
+- [ ] Zoom on kanban board → columns and cards still usable, drag-and-drop still works
+- [ ] Zoom on date pickers and dropdowns → options visible and selectable
+
+### 17.11 Browser Extension Interference
+
+- [ ] Ad blockers (uBlock Origin) → API calls not blocked (no ad-like URL patterns in API endpoints)
+- [ ] Grammarly extension → form inputs still work correctly (React controlled components not broken by injected DOM nodes)
+- [ ] Google Translate → page layout not broken, form submissions still work with translated labels
+- [ ] Privacy extensions blocking cookies/localStorage → session management handles gracefully (error message, not blank page)
+
+### 17.12 Rapid Navigation
+
+- [ ] Clicking multiple nav items in quick succession → app shows the final page, no race condition
+- [ ] Clicking a link before current page finishes loading → in-flight requests cancelled (AbortController), new page loads
+- [ ] Rapid back/forward button clicks → no memory leaks or mounting errors from unmounted component state updates
+- [ ] Opening 10+ pages rapidly via links → no degraded performance or stale data
+
+### 17.13 Right-Click & Open in New Tab
+
+- [ ] Right-click task card on kanban board → "Open in New Tab" works (proper `href`, not `onClick`-only `<div>`)
+- [ ] Right-click client row in client list → "Open in New Tab" works
+- [ ] Right-click project card → "Open in New Tab" works
+- [ ] Right-click invoice row → "Open in New Tab" works
+- [ ] Middle-click (open in new tab) on any navigation link → works
+- [ ] All clickable items that navigate use `<a>` or `<Link>` with valid `href` (not JavaScript-only handlers)
+
+### 17.14 Drag-and-Drop Edge Cases
+
+- [ ] Dropping task outside any valid column → drag cancelled, task stays in original position
+- [ ] Starting drag and pressing Escape → drag cancelled cleanly
+- [ ] Scrolling while dragging (auto-scroll at column edges) → works smoothly
+- [ ] Dragging on touch device → long-press initiates drag, or dropdown alternative available
+- [ ] Drag-and-drop with keyboard (accessibility) → arrow keys or dropdown to change task status
+- [ ] Drag multiple tasks in rapid succession → all updates saved, no lost state
+
+### 17.15 Timer Drift & Background Tabs
+
+- [ ] Timer running in a background tab for 1+ hours → displayed time is accurate on focus (not drifted from browser throttling)
+- [ ] Timer syncs with server on tab focus → display jumps to correct time if browser timer drifted
+- [ ] Laptop sleep with timer running → on wake, timer shows correct elapsed time
+- [ ] Laptop sleep + network reconnect → timer syncs with server, no duplicate entries
+- [ ] Timer in a pinned tab for 8+ hours → no memory growth, display stays correct
+- [ ] Timer across daylight saving time transition → duration calculated on elapsed time, not wall-clock
 
 ---
 
