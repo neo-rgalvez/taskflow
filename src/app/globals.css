@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #F9FAFB;
+  --foreground: #111827;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer components {
+  .skeleton {
+    @apply bg-gray-200 rounded animate-shimmer;
+    background-image: linear-gradient(
+      90deg,
+      #e5e7eb 0%,
+      #f3f4f6 50%,
+      #e5e7eb 100%
+    );
+    background-size: 200% 100%;
+  }
+}
