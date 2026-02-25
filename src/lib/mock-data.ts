@@ -600,10 +600,10 @@ export const calendarEvents = [
 
 // Today's tasks (focused view)
 export const todayTasks = [
-  { id: "tsk_4", title: "Build responsive navigation prototype", projectName: "Patient Portal Redesign", priority: "high" as const, dueDate: "2026-03-08", timeLogged: "6h 30m", status: "in_progress" as const },
-  { id: "tsk_5", title: "Implement patient profile cards", projectName: "Patient Portal Redesign", priority: "medium" as const, dueDate: "2026-03-10", timeLogged: "3h 15m", status: "in_progress" as const },
-  { id: "tsk_1", title: "Design appointment scheduling modal", projectName: "Patient Portal Redesign", priority: "high" as const, dueDate: "2026-03-12", timeLogged: "0h", status: "todo" as const },
-  { id: "tsk_6", title: "Finalize logo placement and sizing", projectName: "Patient Portal Redesign", priority: "medium" as const, dueDate: "2026-03-05", timeLogged: "1h 45m", status: "waiting_on_client" as const },
+  { id: "tsk_4", projectId: "prj_1", title: "Build responsive navigation prototype", projectName: "Patient Portal Redesign", priority: "high" as const, dueDate: "2026-03-08", timeLogged: "6h 30m", status: "in_progress" as const },
+  { id: "tsk_5", projectId: "prj_1", title: "Implement patient profile cards", projectName: "Patient Portal Redesign", priority: "medium" as const, dueDate: "2026-03-10", timeLogged: "3h 15m", status: "in_progress" as const },
+  { id: "tsk_1", projectId: "prj_1", title: "Design appointment scheduling modal", projectName: "Patient Portal Redesign", priority: "high" as const, dueDate: "2026-03-12", timeLogged: "0h", status: "todo" as const },
+  { id: "tsk_6", projectId: "prj_1", title: "Finalize logo placement and sizing", projectName: "Patient Portal Redesign", priority: "medium" as const, dueDate: "2026-03-05", timeLogged: "1h 45m", status: "waiting_on_client" as const },
 ];
 
 export const statusColors: Record<string, { bg: string; text: string; dot: string }> = {

@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Search, SlidersHorizontal, Calendar, Clock, Paperclip } from "lucide-react";
 import { tasks, projects, statusLabels } from "@/lib/mock-data";
 import { formatDate } from "@/lib/format";
+import Link from "next/link";
 
 const sortOptions = ["Due Date", "Priority", "Status", "Project"];
 const statusFilterOptions = ["all", "todo", "in_progress", "waiting_on_client", "review", "done"];
@@ -70,6 +71,7 @@ export default function TasksPage() {
           headline="No tasks yet"
           description="Create your first task inside a project to start tracking work."
           ctaLabel="View Projects"
+          ctaHref="/projects"
         />
       ) : (
         <>
@@ -151,9 +153,10 @@ export default function TasksPage() {
                 const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== "done";
 
                 return (
-                  <div
+                  <Link
                     key={task.id}
-                    className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 hover:shadow-md hover:border-gray-300 transition-all cursor-pointer"
+                    href={`/projects/${task.projectId}`}
+                    className="block bg-white rounded-lg border border-gray-200 shadow-sm p-4 hover:shadow-md hover:border-gray-300 transition-all"
                   >
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
@@ -191,7 +194,7 @@ export default function TasksPage() {
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 );
               })}
             </div>

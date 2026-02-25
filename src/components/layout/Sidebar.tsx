@@ -53,6 +53,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
   return (
     <>
@@ -237,13 +238,40 @@ export function Sidebar() {
             );
           })}
           <button
-            className={`flex flex-col items-center gap-0.5 px-3 py-1 text-gray-400`}
+            onClick={() => setMobileMoreOpen(!mobileMoreOpen)}
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 ${mobileMoreOpen ? "text-primary-500" : "text-gray-400"}`}
           >
-            <MoreHorizontal size={20} />
+            {mobileMoreOpen ? <X size={20} /> : <MoreHorizontal size={20} />}
             <span className="text-[10px] font-medium">More</span>
           </button>
         </div>
       </nav>
+
+      {/* Mobile "More" Menu Overlay */}
+      {mobileMoreOpen && (
+        <div className="lg:hidden fixed inset-0 z-20 bg-white" style={{ bottom: "56px" }}>
+          <div className="px-4 py-6 space-y-1 overflow-y-auto h-full">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-4 mb-3">All Pages</p>
+            {[...navItems, ...bottomItems].map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileMoreOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium ${
+                    isActive ? "bg-primary-50 text-primary-700" : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <Icon size={20} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </>
   );
 }

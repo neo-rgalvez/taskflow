@@ -7,6 +7,7 @@ import { TableRowSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Search, Plus, MoreHorizontal, X } from "lucide-react";
 import { clients } from "@/lib/mock-data";
+import Link from "next/link";
 
 export default function ClientsPage() {
   const [search, setSearch] = useState("");
@@ -116,9 +117,9 @@ export default function ClientsPage() {
                   </tr>
                 ) : (
                   filtered.map((client) => (
-                    <tr key={client.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={client.id} className="hover:bg-gray-50 transition-colors cursor-pointer group">
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
+                        <Link href={`/clients/${client.id}`} className="flex items-center gap-3">
                           <div
                             className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-semibold"
                             style={{ backgroundColor: client.color }}
@@ -126,10 +127,10 @@ export default function ClientsPage() {
                             {client.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-gray-800">{client.name}</p>
+                            <p className="text-sm font-medium text-gray-800 group-hover:text-primary-600">{client.name}</p>
                             <p className="text-xs text-gray-500 sm:hidden">{client.contactName}</p>
                           </div>
-                        </div>
+                        </Link>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <p className="text-sm text-gray-700">{client.contactName}</p>

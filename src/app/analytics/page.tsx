@@ -64,6 +64,7 @@ export default function AnalyticsPage() {
           headline="No data to show yet"
           description="Start tracking time and sending invoices to see your analytics here."
           ctaLabel="Go to Dashboard"
+          ctaHref="/dashboard"
         />
       ) : showSkeleton ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

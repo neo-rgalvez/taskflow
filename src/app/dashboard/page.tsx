@@ -52,6 +52,7 @@ export default function DashboardPage() {
           headline="Welcome to TaskFlow"
           description="Add your first client to get started. You'll be tracking time and sending invoices in no time."
           ctaLabel="+ Add Your First Client"
+          ctaHref="/clients"
         />
       ) : (
         <>
@@ -77,7 +78,7 @@ export default function DashboardPage() {
                   </p>
                 </Link>
 
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px]">
+                <Link href="/time" className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px] hover:shadow-md hover:border-gray-300 transition-all cursor-pointer">
                   <div className="flex justify-between items-start">
                     <p className="text-sm text-gray-500">Hours This Week</p>
                     <Clock size={20} className="text-gray-400" />
@@ -88,25 +89,25 @@ export default function DashboardPage() {
                     {" / "}
                     <span>{(dashboardStats.hoursThisWeek - dashboardStats.billableHours).toFixed(1)}h non-billable</span>
                   </p>
-                </div>
+                </Link>
 
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px]">
+                <Link href="/invoices" className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px] hover:shadow-md hover:border-gray-300 transition-all cursor-pointer">
                   <div className="flex justify-between items-start">
                     <p className="text-sm text-gray-500">Outstanding Invoices</p>
                     <FileText size={20} className="text-gray-400" />
                   </div>
                   <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{dashboardStats.outstandingInvoices}</p>
                   <p className="text-sm text-red-600 mt-1">{dashboardStats.invoiceTrend}</p>
-                </div>
+                </Link>
 
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px]">
+                <Link href="/calendar" className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px] hover:shadow-md hover:border-gray-300 transition-all cursor-pointer">
                   <div className="flex justify-between items-start">
                     <p className="text-sm text-gray-500">Upcoming Deadlines</p>
                     <CalendarDays size={20} className="text-gray-400" />
                   </div>
                   <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{dashboardStats.upcomingDeadlines}</p>
                   <p className="text-sm text-gray-500 mt-1 truncate">{dashboardStats.nextDeadline}</p>
-                </div>
+                </Link>
               </>
             )}
           </div>

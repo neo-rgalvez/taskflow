@@ -144,7 +144,10 @@ export default function SignupPage() {
 
           {submitted && Object.keys(errors).length === 0 && (
             <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-              <p className="text-sm text-green-700">Demo: Account created! (No real auth connected)</p>
+              <p className="text-sm text-green-700">Demo: Account created!</p>
+              <Link href="/dashboard" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-green-700 hover:text-green-800">
+                Go to Dashboard <span aria-hidden="true">&rarr;</span>
+              </Link>
             </div>
           )}
 

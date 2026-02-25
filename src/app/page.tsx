@@ -241,13 +241,14 @@ export default function LandingPage() {
                   <span className="text-4xl font-bold text-gray-900">{plan.price}</span>
                   <span className="text-sm text-gray-500">{plan.period}</span>
                 </div>
-                <button
-                  className={`mt-6 w-full py-2.5 rounded-md font-medium text-sm transition-colors ${
+                <Link
+                  href="/signup"
+                  className={`mt-6 w-full py-2.5 rounded-md font-medium text-sm transition-colors text-center block ${
                     plan.popular ? "bg-primary-500 text-white hover:bg-primary-600" : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                   }`}
                 >
                   {plan.cta}
-                </button>
+                </Link>
                 <ul className="mt-8 space-y-3">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-center gap-2 text-sm text-gray-600">

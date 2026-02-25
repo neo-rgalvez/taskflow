@@ -53,7 +53,7 @@ export default function ProjectDetailPage() {
       <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
         <Link href="/projects" className="hover:text-primary-500">Projects</Link>
         <span className="text-gray-300">/</span>
-        <Link href="/clients" className="hover:text-primary-500">{project.clientName}</Link>
+        <Link href={`/clients/${project.clientId}`} className="hover:text-primary-500">{project.clientName}</Link>
         <span className="text-gray-300">/</span>
         <span className="text-gray-800 font-medium">{project.name}</span>
       </div>

@@ -91,6 +91,7 @@ export default function CalendarPage() {
           headline="No events on the calendar"
           description="Your project deadlines and invoice due dates will appear here automatically."
           ctaLabel="View Projects"
+          ctaHref="/projects"
         />
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm">

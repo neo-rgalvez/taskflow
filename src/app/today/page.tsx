@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Play, CheckCircle2, Calendar, Clock, Sun } from "lucide-react";
 import { todayTasks } from "@/lib/mock-data";
 import { formatDate } from "@/lib/format";
+import Link from "next/link";
 
 export default function TodayPage() {
   const [showSkeleton, setShowSkeleton] = useState(false);
@@ -59,6 +60,7 @@ export default function TodayPage() {
           headline="Nothing scheduled for today"
           description="Enjoy your free day, or add tasks from your project boards."
           ctaLabel="View Projects"
+          ctaHref="/projects"
         />
       ) : showSkeleton ? (
         <div className="space-y-3">
@@ -99,7 +101,7 @@ export default function TodayPage() {
                         <PriorityBadge priority={task.priority} />
                       </div>
                       <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <span>{task.projectName}</span>
+                        <Link href={`/projects/${task.projectId}`} className="hover:text-primary-500 font-medium">{task.projectName}</Link>
                         {task.dueDate && (
                           <span className="flex items-center gap-1">
                             <Calendar size={11} />
