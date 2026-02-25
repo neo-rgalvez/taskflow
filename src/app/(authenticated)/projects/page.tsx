@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ProjectCardSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -25,7 +24,7 @@ export default function ProjectsPage() {
   });
 
   return (
-    <AppShell>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
@@ -164,6 +163,6 @@ export default function ProjectsPage() {
           </div>
         </>
       )}
-    </AppShell>
+    </>
   );
 }

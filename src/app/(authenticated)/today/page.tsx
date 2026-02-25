@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PriorityBadge } from "@/components/ui/PriorityBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -27,7 +26,7 @@ export default function TodayPage() {
   const totalHours = 3.75;
 
   return (
-    <AppShell>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
@@ -178,6 +177,6 @@ export default function TodayPage() {
           </div>
         </div>
       )}
-    </AppShell>
+    </>
   );
 }
