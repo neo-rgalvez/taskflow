@@ -7,23 +7,22 @@
 
 ## Table of Contents
 
-1. [Public Pages](#1-public-pages)
-2. [Authenticated Pages — Core Navigation](#2-authenticated-pages--core-navigation)
-3. [Authenticated Pages — Clients](#3-authenticated-pages--clients)
-4. [Authenticated Pages — Projects](#4-authenticated-pages--projects)
-5. [Authenticated Pages — Tasks](#5-authenticated-pages--tasks)
-6. [Authenticated Pages — Time Tracking](#6-authenticated-pages--time-tracking)
-7. [Authenticated Pages — Invoicing](#7-authenticated-pages--invoicing)
+1. [Public Pages](#1-public-pages) — Landing, Sign Up, Email Verification, Log In, Forgot/Reset Password, Client Portal
+2. [Authenticated Pages — Core Navigation](#2-authenticated-pages--core-navigation) — Dashboard, Today View
+3. [Authenticated Pages — Clients](#3-authenticated-pages--clients) — Client List, Client Detail, Client Creation
+4. [Authenticated Pages — Projects](#4-authenticated-pages--projects) — Project List, Project Creation, Project Overview, Board View, List View, Templates
+5. [Authenticated Pages — Tasks](#5-authenticated-pages--tasks) — Cross-Project Task List, Task Detail
+6. [Authenticated Pages — Time Tracking](#6-authenticated-pages--time-tracking) — Time Entries, Active Timer
+7. [Authenticated Pages — Invoicing](#7-authenticated-pages--invoicing) — Invoice List, Invoice Detail, New Invoice, Business Profile
 8. [Authenticated Pages — Calendar & Scheduling](#8-authenticated-pages--calendar--scheduling)
-9. [Authenticated Pages — Settings](#9-authenticated-pages--settings)
-10. [Authenticated Pages — Search](#10-authenticated-pages--search)
-11. [Global Components](#11-global-components)
-12. [Cross-Page Flows](#12-cross-page-flows)
-13. [Security Tests](#13-security-tests)
-14. [Destructive Actions & Cascade Tests](#14-destructive-actions--cascade-tests)
-15. [Performance Tests](#15-performance-tests)
-16. [Accessibility Tests](#16-accessibility-tests)
-17. [Cross-Browser & Device Tests](#17-cross-browser--device-tests)
+9. [Authenticated Pages — Settings & Search](#9-authenticated-pages--settings) — Account, Notifications, Search
+10. [Global Components](#10-global-components) — Navigation, Notifications Bell, HTTP Errors, Client-Side Errors, Error Boundary, Logout
+11. [Cross-Page Flows](#11-cross-page-flows) — Onboarding, Work Session, Invoicing (Hourly & Fixed-Price), Portal, Project Lifecycle, Budget Alerts, Invoice Overdue, Notifications, Session Expiry
+12. [Security Tests](#12-security-tests) — Auth Bypass, IDOR, Rate Limiting, Injection, File Upload, Session, Data Protection
+13. [Destructive Actions & Cascade Tests](#13-destructive-actions--cascade-tests) — Client, Project, Task, Invoice, Time Entry, Account Deletion
+14. [Performance Tests](#14-performance-tests) — Load Times, Data Volume, Concurrency, Network Resilience
+15. [Accessibility Tests](#15-accessibility-tests) — Keyboard, Screen Reader, Visual
+16. [Cross-Browser & Device Tests](#16-cross-browser--device-tests)
 
 ---
 
@@ -107,6 +106,35 @@
 - [ ] Email with valid but unusual format (e.g., `user+tag@example.com`) → accepted
 - [ ] Back button after successful signup → does not re-submit form
 - [ ] Pasting content into fields → validation runs correctly
+
+---
+
+### 1.2a Email Verification Flow
+
+**PREREQUISITES:** User has just signed up and received a verification email.
+
+**Happy Path:**
+- [ ] Verification email is received at the registered email address
+- [ ] Email contains a valid, clickable verification link
+- [ ] Clicking the verification link → account marked as verified, redirected to dashboard or login
+- [ ] After verification, the verification banner on authenticated pages disappears
+
+**Unverified User Behavior:**
+- [ ] Unverified user can log in successfully
+- [ ] Unverified user sees a persistent verification banner: "Please verify your email" with a resend link
+- [ ] Clicking "Resend verification email" → new email sent, confirmation shown
+- [ ] Unverified user can access all features (banner is informational, not blocking)
+
+**Error State:**
+- [ ] Expired verification link → "This verification link has expired. Request a new one." with resend option
+- [ ] Already-used verification link → "Your email is already verified" or redirect to dashboard
+- [ ] Malformed/invalid verification token → "Invalid verification link"
+
+**Security:**
+- [ ] Verification token is single-use
+- [ ] Verification token expires (reasonable time limit)
+- [ ] Re-sending verification invalidates prior tokens
+- [ ] Cannot verify another user's email by guessing tokens
 
 ---
 
@@ -368,7 +396,7 @@
 **PREREQUISITES:** Authenticated user, existing client.
 
 **Happy Path:**
-- [ ] Shows full client profile: contact info (name, email, phone, address), notes, default hourly rate, default payment terms
+- [ ] Shows full client profile: contact info (name, email, phone, address), notes, default hourly rate, default payment terms, total hours tracked, total revenue
 - [ ] Tabs: Projects, Invoices, Activity (or equivalent sections)
 - [ ] Projects tab shows all projects for this client with status badges
 - [ ] Invoices tab shows all invoices for this client
@@ -471,6 +499,39 @@
 
 ---
 
+### 4.1a Project Creation (Modal/Form)
+
+**PREREQUISITES:** Authenticated user with at least one client.
+
+**Happy Path:**
+- [ ] Form shows: select client (or create new), project name (required), description, billing type toggle
+- [ ] Selecting "Hourly" → hourly rate field appears (pre-filled from client's default_hourly_rate)
+- [ ] Selecting "Fixed-Price" → fixed price field appears + milestone creation section
+- [ ] Budget fields: budget hours and/or budget amount
+- [ ] Deadline date picker
+- [ ] "Create from template?" toggle → shows template selection dropdown
+- [ ] Submitting valid data → project created, redirected to project board
+- [ ] New project appears in project list and client's project tab
+
+**Validation:**
+- [ ] Name empty → "Project name is required"
+- [ ] Name > 200 characters → "Project name is too long"
+- [ ] Billing type not selected → "Please select a billing type"
+- [ ] Hourly billing type with no rate → "Hourly rate is required for hourly projects"
+- [ ] Fixed-price billing type with no price → "Total price is required for fixed-price projects"
+- [ ] Hourly rate negative or zero → "Hourly rate must be a positive number"
+- [ ] Fixed price negative or zero → "Total price must be a positive number"
+- [ ] Deadline in the past → "Deadline must be a future date"
+- [ ] Budget hours negative → "Budget hours must be a positive number"
+
+**Edge Cases:**
+- [ ] Creating project with template → tasks from template pre-populated in new project
+- [ ] Creating project for newly-created client (inline) → both client and project created
+- [ ] Client has no default hourly rate → hourly rate field is empty, must be manually set
+- [ ] Closing form mid-edit → data discarded (or confirmation prompt)
+
+---
+
 ### 4.2 Project Detail — Overview — `/projects/:id`
 
 **PREREQUISITES:** Authenticated user, existing project.
@@ -480,8 +541,17 @@
 - [ ] "Edit Project" button → opens edit form
 - [ ] Can change project status (Active → On Hold, Active → Completed, etc.)
 - [ ] Budget progress bar shows hours tracked / budget hours
+- [ ] Budget amount progress bar shows dollars spent / budget amount (when budget_amount is set)
 - [ ] Milestone list (fixed-price projects) shows name, amount, due date, status
+- [ ] Can add a new milestone → milestone appears in list
+- [ ] Can edit an existing milestone (name, amount, due date) → changes saved
+- [ ] Can mark milestone as completed → status changes to "Completed"
 - [ ] File attachments section shows uploaded files with download links
+- [ ] Portal sharing section: shows portal token/link for client access
+- [ ] "Copy Portal Link" button → copies shareable URL to clipboard
+- [ ] "Generate Portal Link" → creates a new portal token if none exists
+- [ ] "Revoke Portal Link" → token invalidated, portal URL stops working (with confirmation)
+- [ ] Budget alert threshold is configurable (default 80%) → can be changed in project settings
 
 **Validation (Edit):**
 - [ ] Project name cleared → "Project name is required"
@@ -503,7 +573,12 @@
 - [ ] Project at exactly 80% budget → budget alert threshold triggered
 - [ ] Project over budget → progress bar overflows or shows >100%
 - [ ] Changing status to Completed with non-done tasks → warning displayed
-- [ ] Changing status to On Hold → running timers stopped
+- [ ] Changing status to On Hold → running timers on all project tasks stopped
+- [ ] Changing status to Cancelled → confirmation required, all timers stopped
+- [ ] Attempting Cancelled → Active (or any status) → blocked: "Cancelled projects cannot be reopened. Create a new project."
+- [ ] Attempting Completed → Cancelled → blocked (not an allowed transition)
+- [ ] Completed → Active (reopen) → allowed
+- [ ] Start timer on a task in a completed project → blocked: "This project is marked as completed. Reopen it to track time."
 
 ---
 
@@ -731,7 +806,11 @@
 - [ ] Time entry spanning midnight (11pm to 1am) → correct duration calculation
 - [ ] Multiple entries on same task, same day → all shown separately
 - [ ] Billable toggle → correctly affects amount calculation
+- [ ] Non-billable time entries excluded from invoice creation wizard (only billable entries appear)
 - [ ] Summary row/section shows totals: total hours, total billable amount
+- [ ] Group by day → entries grouped under date headers with daily subtotals
+- [ ] Group by client → entries grouped under client headers
+- [ ] Group by project → entries grouped under project headers
 
 ---
 
@@ -962,6 +1041,13 @@
 - [ ] Email change requires verification of new email
 - [ ] Account deletion requires confirmation (ideally re-entering password)
 
+**Data Export (GDPR):**
+- [ ] "Export My Data" button is available in account settings
+- [ ] Clicking export → generates a downloadable archive (JSON or ZIP) containing all user data: clients, projects, tasks, time entries, invoices, files, settings
+- [ ] Export includes all relationships (invoices reference clients, time entries reference tasks, etc.)
+- [ ] Export completes within a reasonable time for a user with substantial data
+- [ ] Export does not include other users' data
+
 **Edge Cases:**
 - [ ] Changing email to same email → no-op or gentle message
 - [ ] Very long name → appropriate max length
@@ -1032,17 +1118,39 @@
 - [ ] "Mark all as read" → clears unread count
 - [ ] Notification types work: deadline_reminder, budget_alert, overdue_invoice, time_tracking_reminder
 
-### 10.3 404 Page
+### 10.3 HTTP Error Responses (All Pages)
 
-- [ ] Visiting a non-existent URL → shows 404 page
-- [ ] 404 page has a "Return to Dashboard" link
-- [ ] 404 page is styled consistently with the rest of the app
+- [ ] 400 Bad Request → "Something wasn't right with that request. Please check your input and try again." with inline validation errors
+- [ ] 401 Unauthorized (session expired) → "Your session has expired. Please log in again." → redirect to `/login` with return URL preserved
+- [ ] 403 Forbidden (accessing another user's data) → "You don't have permission to access this resource." → redirect to `/dashboard`
+- [ ] 404 Not Found → "We couldn't find what you're looking for." → styled 404 page with link to dashboard
+- [ ] 409 Conflict (concurrent edit / duplicate invoice number) → "This action conflicts with a recent change. Please refresh and try again." → current data reloaded
+- [ ] 413 Payload Too Large (file upload) → "This file is too large. Maximum file size is 25 MB." → error shown next to upload field
+- [ ] 422 Unprocessable Entity (server-side validation) → specific field-level error messages → invalid fields highlighted with messages
+- [ ] 429 Too Many Requests → "You're making requests too quickly. Please wait a moment." → retry countdown shown
+- [ ] 500 Internal Server Error → "Something went wrong on our end. We've been notified and are looking into it." → error page with "Return to Dashboard" button
 
-### 10.4 Error Boundary
+### 10.4 Client-Side Error Handling
+
+- [ ] Network goes offline → persistent banner: "You're offline. Changes will sync when you reconnect." → server-dependent actions disabled
+- [ ] Network comes back online → banner removed, pending actions sync
+- [ ] Network timeout → request retried once after 3 seconds → if still failing: "Request timed out. Please try again."
+- [ ] Optimistic update failure (e.g., drag task to new column, server rejects) → UI reverts to previous state → toast: "That action couldn't be completed. Please try again."
+- [ ] Session expires mid-action (e.g., filling out a form) → in-progress form data saved to localStorage → redirect to login → after re-login, form data restored from localStorage
+
+### 10.5 Error Boundary
 
 - [ ] JavaScript error in a component → error boundary catches it, shows fallback UI
 - [ ] Fallback UI has a "Return to Dashboard" or "Reload" button
 - [ ] Error is logged (sent to error tracking service)
+
+### 10.6 Logout
+
+- [ ] Logout button/link is accessible from navigation or settings
+- [ ] Click logout → session fully invalidated server-side (not just cookie cleared)
+- [ ] After logout, redirected to `/login` or landing page
+- [ ] After logout, pressing back button does not show authenticated content
+- [ ] After logout, accessing any authenticated URL → redirected to `/login`
 
 ---
 
@@ -1109,7 +1217,9 @@
 - [ ] Verify warning if not all tasks are Done
 - [ ] Reopen project → status back to Active
 - [ ] Cancel a project → confirm dialog → project marked Cancelled
-- [ ] Cannot change Cancelled project to any status
+- [ ] Cannot change Cancelled project to any status (must create a new project)
+- [ ] Cannot change Completed → Cancelled (not an allowed transition)
+- [ ] On Hold → Cancelled → allowed (with confirmation)
 
 ### 11.7 Budget Alert Flow
 
@@ -1119,7 +1229,28 @@
 - [ ] Track 2 more hours (100%) → budget exceeded → stronger alert
 - [ ] Dashboard and project page reflect over-budget status
 
-### 11.8 Session Expiry Flow
+### 11.8 Invoice Overdue Automation Flow
+
+- [ ] Create and send an invoice with a due date in the past (or wait for due date to pass)
+- [ ] Automated process detects due_date < today AND balance_due > 0
+- [ ] Invoice status automatically changes from Sent → Overdue
+- [ ] Invoice status automatically changes from Partial → Overdue (if past due with remaining balance)
+- [ ] Notification created: overdue_invoice type, references the invoice
+- [ ] Dashboard "Outstanding Invoices" card reflects updated overdue total
+- [ ] Invoice with balance_due = 0 (fully paid) does NOT transition to Overdue even if past due date
+
+### 11.9 Notification Trigger Flow
+
+- [ ] Task due date is tomorrow → deadline_reminder notification created (if enabled in settings)
+- [ ] Project budget hits alert threshold → budget_alert notification created
+- [ ] Invoice becomes overdue → overdue_invoice notification created
+- [ ] Notification appears in bell dropdown (in_app channel)
+- [ ] Notification email sent (email channel, if enabled in settings)
+- [ ] Click notification → navigates to the referenced entity (task, project, or invoice via reference_type/reference_id)
+- [ ] Notifications respect quiet hours setting — no notifications during configured quiet hours
+- [ ] Notifications respect channel toggles — turning off email stops email notifications but in-app still works
+
+### 11.10 Session Expiry Flow
 
 - [ ] Log in → start working
 - [ ] Wait for session idle timeout (7 days) or manually expire session
