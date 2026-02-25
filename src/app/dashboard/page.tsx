@@ -15,6 +15,7 @@ import {
   Activity,
 } from "lucide-react";
 import { dashboardStats, recentActivity, projects } from "@/lib/mock-data";
+import { formatDate } from "@/lib/format";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -82,8 +83,10 @@ export default function DashboardPage() {
                     <Clock size={20} className="text-gray-400" />
                   </div>
                   <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{dashboardStats.hoursThisWeek}<span className="text-lg">h</span></p>
-                  <p className="text-sm text-green-600 mt-1 flex items-center gap-1">
-                    <TrendingUp size={14} /> {dashboardStats.hoursTrend}
+                  <p className="text-xs text-gray-500 mt-1">
+                    <span className="text-green-600 font-medium">{dashboardStats.billableHours}h billable</span>
+                    {" / "}
+                    <span>{(dashboardStats.hoursThisWeek - dashboardStats.billableHours).toFixed(1)}h non-billable</span>
                   </p>
                 </div>
 
@@ -149,7 +152,7 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="text-xs text-gray-500">Due {project.deadline}</p>
+                          <p className="text-xs text-gray-500">Due {formatDate(project.deadline)}</p>
                           <p className="text-xs text-gray-400 mt-1">{project.taskCount} tasks</p>
                         </div>
                       </Link>

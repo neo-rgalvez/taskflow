@@ -7,6 +7,7 @@ import { ProjectCardSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Search, Plus, CalendarDays } from "lucide-react";
 import { projects, statusLabels } from "@/lib/mock-data";
+import { formatDate } from "@/lib/format";
 import Link from "next/link";
 
 const filterOptions = ["all", "active", "on_hold", "completed", "cancelled"];
@@ -121,7 +122,7 @@ export default function ProjectsPage() {
                       <StatusBadge status={project.status} />
                       <span className={`text-xs flex items-center gap-1 ${isOverdue ? "text-red-500 font-semibold" : "text-gray-500"}`}>
                         <CalendarDays size={12} />
-                        {project.deadline}
+                        {formatDate(project.deadline)}
                       </span>
                     </div>
                     <h3 className="text-lg font-semibold text-gray-800 mb-1">{project.name}</h3>

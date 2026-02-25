@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { AlertTriangle, User, Lock, Bell, Building } from "lucide-react";
+import { AlertTriangle, User, Lock, Bell, Building, Upload } from "lucide-react";
 
 type Tab = "profile" | "password" | "notifications" | "business" | "danger";
 
@@ -193,6 +193,34 @@ export default function SettingsPage() {
                 <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
                   <h2 className="text-xl font-semibold text-gray-900 mb-6">Notification Preferences</h2>
                   <div className="space-y-6">
+                    {/* Notification Channels */}
+                    <div className="pb-6 border-b border-gray-200">
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Notification Channels</h3>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-700">Email notifications</p>
+                            <p className="text-xs text-gray-500 mt-0.5">Receive notifications via email</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                            <input type="checkbox" defaultChecked={true} className="sr-only peer" />
+                            <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500" />
+                          </label>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-700">In-app notifications</p>
+                            <p className="text-xs text-gray-500 mt-0.5">Show notifications in the sidebar bell</p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                            <input type="checkbox" defaultChecked={true} className="sr-only peer" />
+                            <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500" />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Notification Types */}
                     {[
                       { label: "Deadline reminders", description: "Get notified when task or project deadlines are approaching", defaultOn: true },
                       { label: "Budget alerts", description: "Alert when a project reaches 80% of its budget", defaultOn: true },
@@ -239,6 +267,23 @@ export default function SettingsPage() {
                   <h2 className="text-xl font-semibold text-gray-900 mb-6">Business Profile</h2>
                   <p className="text-sm text-gray-500 mb-6">This information appears on your invoices.</p>
                   <form className="space-y-5">
+                    {/* Logo Upload */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Logo</label>
+                      <div className="flex items-center gap-4">
+                        <div className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 flex flex-col items-center justify-center text-gray-400">
+                          <Upload size={20} />
+                          <span className="text-[10px] mt-1">Logo</span>
+                        </div>
+                        <div>
+                          <button className="text-sm text-primary-500 hover:text-primary-700 font-medium">
+                            Upload logo
+                          </button>
+                          <p className="text-xs text-gray-400 mt-0.5">PNG, SVG. Max 1MB. Appears on invoices.</p>
+                        </div>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Name</label>
                       <input

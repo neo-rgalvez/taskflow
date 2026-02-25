@@ -76,7 +76,7 @@ export default function AnalyticsPage() {
         <>
           {/* Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px]">
               <div className="flex justify-between items-start">
                 <p className="text-sm text-gray-500">Total Revenue</p>
                 <DollarSign size={20} className="text-gray-400" />
@@ -86,7 +86,7 @@ export default function AnalyticsPage() {
                 <TrendingUp size={14} /> All time
               </p>
             </div>
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px]">
               <div className="flex justify-between items-start">
                 <p className="text-sm text-gray-500">Avg Monthly Revenue</p>
                 <TrendingUp size={20} className="text-gray-400" />
@@ -94,7 +94,7 @@ export default function AnalyticsPage() {
               <p className="text-3xl font-bold text-gray-900 font-mono mt-2">${avgMonthlyRevenue.toLocaleString()}</p>
               <p className="text-sm text-green-600 mt-1">+8% vs prior period</p>
             </div>
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px]">
               <div className="flex justify-between items-start">
                 <p className="text-sm text-gray-500">Hours This Month</p>
                 <Clock size={20} className="text-gray-400" />
@@ -102,7 +102,7 @@ export default function AnalyticsPage() {
               <p className="text-3xl font-bold text-gray-900 font-mono mt-2">{totalHoursThisMonth}h</p>
               <p className="text-sm text-gray-500 mt-1">28h billable</p>
             </div>
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5">
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px]">
               <div className="flex justify-between items-start">
                 <p className="text-sm text-gray-500">Active Clients</p>
                 <Users size={20} className="text-gray-400" />

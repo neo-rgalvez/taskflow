@@ -18,6 +18,7 @@ import {
   Upload,
 } from "lucide-react";
 import { tasks, projects, type Task } from "@/lib/mock-data";
+import { formatDate } from "@/lib/format";
 import Link from "next/link";
 
 const columns: { key: string; label: string; color: string }[] = [
@@ -98,7 +99,7 @@ export default function ProjectDetailPage() {
         </div>
         <div>
           <span className="text-gray-500">Deadline:</span>
-          <span className="ml-2 font-medium text-gray-700">{project.deadline}</span>
+          <span className="ml-2 font-medium text-gray-700">{formatDate(project.deadline)}</span>
         </div>
         <div>
           <span className="text-gray-500">Tasks:</span>
@@ -182,7 +183,7 @@ export default function ProjectDetailPage() {
                             new Date(task.dueDate) < new Date() ? "text-red-500 font-medium" : "text-gray-400"
                           }`}>
                             <CalendarDays size={12} />
-                            {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            {formatDate(task.dueDate)}
                           </span>
                         ) : (
                           <span />
@@ -287,6 +288,20 @@ export default function ProjectDetailPage() {
                   <button className="mt-2 text-sm text-primary-500 hover:text-primary-700 flex items-center gap-1">
                     <Plus size={14} /> Add subtask
                   </button>
+                </div>
+              )}
+
+              {/* Dependencies / Blocked By */}
+              {selectedTask.status === "in_progress" && (
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-2 block">Blocked By</label>
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                    <div className="flex items-center gap-2 text-sm text-amber-700">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
+                      <span className="font-medium">Finalize logo placement and sizing</span>
+                    </div>
+                    <p className="text-xs text-amber-600 mt-1 ml-4">Waiting on Client — {formatDate("2026-03-05")}</p>
+                  </div>
                 </div>
               )}
 
