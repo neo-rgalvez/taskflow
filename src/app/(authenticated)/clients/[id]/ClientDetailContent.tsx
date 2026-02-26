@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -147,9 +147,12 @@ export default function ClientDetailContent({ id }: { id: string }) {
     setShowEditModal(true);
   }
 
+  const savingRef = useRef(false);
+
   async function handleSaveClient(e: React.FormEvent) {
     e.preventDefault();
     if (!client) return;
+    if (savingRef.current) return;
 
     const errs: Record<string, string> = {};
     if (!formData.name.trim()) errs.name = "Client name is required.";
@@ -169,6 +172,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
     if (Object.keys(errs).length > 0) return;
 
     setSaving(true);
+    savingRef.current = true;
 
     const payload = {
       name: formData.name.trim(),
@@ -206,6 +210,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
     }
 
     setSaving(false);
+    savingRef.current = false;
   }
 
   // Archive
@@ -287,8 +292,8 @@ export default function ClientDetailContent({ id }: { id: string }) {
               <Skeleton className="h-4 w-56 rounded" />
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-200">
-            {[1, 2, 3, 4].map((i) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-6 pt-6 border-t border-gray-200">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i}>
                 <Skeleton className="h-3 w-20 rounded mb-2" />
                 <Skeleton className="h-7 w-16 rounded" />
@@ -319,12 +324,20 @@ export default function ClientDetailContent({ id }: { id: string }) {
             The client you&apos;re looking for doesn&apos;t exist or you
             don&apos;t have access.
           </p>
-          <Link
-            href="/clients"
-            className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600"
-          >
-            Back to Clients
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/dashboard"
+              className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600"
+            >
+              Go to Dashboard
+            </Link>
+            <Link
+              href="/clients"
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Back to Clients
+            </Link>
+          </div>
         </div>
       </>
     );
@@ -408,7 +421,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-200">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-6 pt-6 border-t border-gray-200">
           <div>
             <p className="text-xs text-gray-500">Default Rate</p>
             <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">
@@ -423,6 +436,18 @@ export default function ClientDetailContent({ id }: { id: string }) {
               {client.defaultPaymentTerms
                 ? `Net ${client.defaultPaymentTerms}`
                 : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Total Hours Tracked</p>
+            <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">
+              0h
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Total Revenue</p>
+            <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">
+              $0.00
             </p>
           </div>
           <div>
@@ -445,7 +470,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 mb-6 border-b border-gray-200">
+      <div className="flex items-center gap-1 mb-6 border-b border-gray-200 overflow-x-auto">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (

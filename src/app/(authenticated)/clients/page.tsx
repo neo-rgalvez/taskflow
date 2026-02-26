@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TableRowSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api";
-import { formatCurrency } from "@/lib/format";
+
 import {
   Search,
   Plus,
@@ -197,8 +197,12 @@ export default function ClientsPage() {
     setActiveMenu(null);
   }
 
+  // Guard against double-submit
+  const savingRef = useRef(false);
+
   async function handleSaveClient(e: React.FormEvent) {
     e.preventDefault();
+    if (savingRef.current) return;
 
     // Client-side validation
     const errs: Record<string, string> = {};
@@ -212,6 +216,7 @@ export default function ClientsPage() {
     if (Object.keys(errs).length > 0) return;
 
     setSaving(true);
+    savingRef.current = true;
 
     const payload: Record<string, unknown> = {
       name: formData.name.trim(),
@@ -274,6 +279,7 @@ export default function ClientsPage() {
     }
 
     setSaving(false);
+    savingRef.current = false;
   }
 
   // Archive / Unarchive
@@ -384,7 +390,7 @@ export default function ClientsPage() {
           description={
             showArchived
               ? "Archived clients will appear here."
-              : "Add a client to organize your projects, track time, and generate invoices."
+              : "Add your first client to organize your projects, track time, and generate invoices."
           }
           ctaLabel={showArchived ? undefined : "+ Add Client"}
           onCta={showArchived ? undefined : openCreateModal}
@@ -420,10 +426,10 @@ export default function ClientsPage() {
                     Contact
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium uppercase text-gray-500 tracking-wider hidden md:table-cell">
-                    Rate
+                    Active Projects
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium uppercase text-gray-500 tracking-wider hidden lg:table-cell">
-                    Terms
+                    Outstanding
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium uppercase text-gray-500 tracking-wider">
                     Status
@@ -444,7 +450,7 @@ export default function ClientsPage() {
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center">
                       <p className="text-sm text-gray-500">
-                        No results match your search
+                        No clients match your search
                       </p>
                       <button
                         onClick={() => setSearch("")}
@@ -473,8 +479,8 @@ export default function ClientsPage() {
                           >
                             {getInitials(client.name)}
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-800 group-hover:text-primary-600">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-800 group-hover:text-primary-600 truncate max-w-[200px]">
                               {client.name}
                             </p>
                             <p className="text-xs text-gray-500 sm:hidden">
@@ -493,16 +499,12 @@ export default function ClientsPage() {
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
                         <span className="text-sm font-mono text-gray-700">
-                          {client.defaultHourlyRate
-                            ? `${formatCurrency(parseFloat(client.defaultHourlyRate))}/hr`
-                            : "—"}
+                          0
                         </span>
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
-                        <span className="text-sm text-gray-700">
-                          {client.defaultPaymentTerms
-                            ? `Net ${client.defaultPaymentTerms}`
-                            : "—"}
+                        <span className="text-sm font-mono text-gray-700">
+                          $0.00
                         </span>
                       </td>
                       <td className="px-4 py-3">
