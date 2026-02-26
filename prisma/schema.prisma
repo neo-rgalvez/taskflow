@@ -1,5 +1,5 @@
 // TaskFlow — Prisma Schema
-// Phase A: Foundation (User, Session, PasswordResetToken, EmailVerificationToken)
+// Full data model: Users, Clients, Projects, Tasks, Time Entries, Invoices, etc.
 
 generator client {
   provider = "prisma-client-js"
@@ -10,27 +10,118 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── User ──────────────────────────────────────────────────────────────────────
+// ─── Enums ──────────────────────────────────────────────────────────────────────
+
+enum ProjectStatus {
+  active
+  on_hold
+  completed
+  cancelled
+}
+
+enum BillingType {
+  hourly
+  fixed_price
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  waiting_on_client
+  review
+  done
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum MilestoneStatus {
+  pending
+  completed
+  invoiced
+}
+
+enum InvoiceStatus {
+  draft
+  sent
+  paid
+  overdue
+  partial
+}
+
+enum InvoiceLineItemType {
+  time_entry
+  milestone
+  custom
+}
+
+enum NotificationType {
+  deadline_reminder
+  budget_alert
+  overdue_invoice
+  time_tracking_reminder
+}
+
+enum NotificationChannel {
+  in_app
+  email
+}
+
+enum ReferenceType {
+  task
+  project
+  invoice
+}
+
+enum UploadSource {
+  owner
+  portal
+}
+
+enum ActivityAction {
+  created
+  updated
+  deleted
+  status_changed
+}
+
+// ─── User ───────────────────────────────────────────────────────────────────────
 
 model User {
-  id                   String    @id @default(cuid())
-  email                String    @unique
-  passwordHash         String    @map("password_hash")
-  name                 String
-  emailVerified        Boolean   @default(false) @map("email_verified")
-  timezone             String    @default("UTC")
-  scheduledDeletionAt  DateTime? @map("scheduled_deletion_at")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  passwordHash        String    @map("password_hash")
+  name                String
+  emailVerified       Boolean   @default(false) @map("email_verified")
+  timezone            String    @default("UTC")
+  scheduledDeletionAt DateTime? @map("scheduled_deletion_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  sessions                  Session[]
-  passwordResetTokens       PasswordResetToken[]
-  emailVerificationTokens   EmailVerificationToken[]
+  sessions                Session[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  businessProfile         BusinessProfile?
+  clients                 Client[]
+  projects                Project[]
+  tasks                   Task[]
+  timeEntries             TimeEntry[]
+  invoices                Invoice[]
+  fileAttachments         FileAttachment[]
+  projectTemplates        ProjectTemplate[]
+  notifications           Notification[]
+  notificationPreference  NotificationPreference?
+  calendarBlockedTimes    CalendarBlockedTime[]
+  activityLogs            ActivityLog[]
 
   @@map("users")
 }
 
-// ─── Session (database-backed, replaces stateless iron-session) ────────────────
+// ─── Session ────────────────────────────────────────────────────────────────────
 
 model Session {
   id           String   @id @default(cuid())
@@ -48,7 +139,7 @@ model Session {
   @@map("sessions")
 }
 
-// ─── Password Reset Token ──────────────────────────────────────────────────────
+// ─── Password Reset Token ───────────────────────────────────────────────────────
 
 model PasswordResetToken {
   id        String    @id @default(cuid())
@@ -64,7 +155,7 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
-// ─── Email Verification Token ──────────────────────────────────────────────────
+// ─── Email Verification Token ───────────────────────────────────────────────────
 
 model EmailVerificationToken {
   id        String    @id @default(cuid())
@@ -78,4 +169,385 @@ model EmailVerificationToken {
 
   @@index([userId])
   @@map("email_verification_tokens")
+}
+
+// ─── Business Profile ───────────────────────────────────────────────────────────
+
+model BusinessProfile {
+  id                  String  @id @default(cuid())
+  userId              String  @unique @map("user_id")
+  businessName        String? @map("business_name")
+  address             String?
+  logoUrl             String? @map("logo_url")
+  paymentInstructions String? @map("payment_instructions")
+  defaultTaxRate      Decimal @default(0.00) @map("default_tax_rate") @db.Decimal(5, 2)
+  defaultCurrency     String  @default("USD") @map("default_currency") @db.VarChar(3)
+  invoiceNumberPrefix String  @default("INV-") @map("invoice_number_prefix")
+  nextInvoiceNumber   Int     @default(1) @map("next_invoice_number")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("business_profiles")
+}
+
+// ─── Client ─────────────────────────────────────────────────────────────────────
+
+model Client {
+  id                  String   @id @default(cuid())
+  userId              String   @map("user_id")
+  name                String
+  contactName         String?  @map("contact_name")
+  email               String?
+  phone               String?
+  address             String?
+  notes               String?
+  defaultHourlyRate   Decimal? @map("default_hourly_rate") @db.Decimal(10, 2)
+  defaultPaymentTerms Int      @default(30) @map("default_payment_terms")
+  isArchived          Boolean  @default(false) @map("is_archived")
+  color               String   @default("#6366F1")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects Project[]
+  invoices Invoice[]
+
+  @@index([userId])
+  @@map("clients")
+}
+
+// ─── Project ────────────────────────────────────────────────────────────────────
+
+model Project {
+  id                    String        @id @default(cuid())
+  clientId              String        @map("client_id")
+  userId                String        @map("user_id")
+  name                  String
+  description           String?
+  status                ProjectStatus @default(active)
+  billingType           BillingType   @map("billing_type")
+  hourlyRate            Decimal?      @map("hourly_rate") @db.Decimal(10, 2)
+  fixedPrice            Decimal?      @map("fixed_price") @db.Decimal(10, 2)
+  budgetHours           Decimal?      @map("budget_hours") @db.Decimal(8, 2)
+  budgetAmount          Decimal?      @map("budget_amount") @db.Decimal(10, 2)
+  budgetAlertThreshold  Decimal       @default(0.80) @map("budget_alert_threshold") @db.Decimal(3, 2)
+  deadline              DateTime?     @db.Date
+  color                 String        @default("#6366F1")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  client          Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks           Task[]
+  timeEntries     TimeEntry[]
+  milestones      Milestone[]
+  invoices        Invoice[]
+  fileAttachments FileAttachment[]
+
+  @@index([userId, status])
+  @@index([clientId])
+  @@map("projects")
+}
+
+// ─── Task ───────────────────────────────────────────────────────────────────────
+
+model Task {
+  id          String       @id @default(cuid())
+  projectId   String       @map("project_id")
+  userId      String       @map("user_id")
+  title       String
+  description String?
+  status      TaskStatus   @default(todo)
+  priority    TaskPriority @default(medium)
+  dueDate     DateTime?    @map("due_date") @db.Date
+  position    Int          @default(0)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subtasks        Subtask[]
+  timeEntries     TimeEntry[]
+  fileAttachments FileAttachment[]
+  blockedBy       TaskDependency[] @relation("BlockedTask")
+  blocking        TaskDependency[] @relation("BlockingTask")
+
+  @@index([projectId, status])
+  @@index([userId, dueDate])
+  @@map("tasks")
+}
+
+// ─── Subtask ────────────────────────────────────────────────────────────────────
+
+model Subtask {
+  id          String   @id @default(cuid())
+  taskId      String   @map("task_id")
+  title       String
+  isCompleted Boolean  @default(false) @map("is_completed")
+  position    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("subtasks")
+}
+
+// ─── Task Dependency ────────────────────────────────────────────────────────────
+
+model TaskDependency {
+  id              String   @id @default(cuid())
+  taskId          String   @map("task_id")
+  blockedByTaskId String   @map("blocked_by_task_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  task      Task @relation("BlockedTask", fields: [taskId], references: [id], onDelete: Cascade)
+  blockedBy Task @relation("BlockingTask", fields: [blockedByTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, blockedByTaskId])
+  @@map("task_dependencies")
+}
+
+// ─── Time Entry ─────────────────────────────────────────────────────────────────
+
+model TimeEntry {
+  id              String    @id @default(cuid())
+  taskId          String?   @map("task_id")
+  projectId       String    @map("project_id")
+  userId          String    @map("user_id")
+  description     String?
+  startTime       DateTime  @map("start_time")
+  endTime         DateTime? @map("end_time")
+  durationMinutes Int?      @map("duration_minutes")
+  isBillable      Boolean   @default(true) @map("is_billable")
+  isInvoiced      Boolean   @default(false) @map("is_invoiced")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  task             Task?             @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoiceLineItems InvoiceLineItem[]
+
+  @@index([projectId])
+  @@index([userId, startTime])
+  @@index([projectId, isBillable, isInvoiced])
+  @@map("time_entries")
+}
+
+// ─── Milestone ──────────────────────────────────────────────────────────────────
+
+model Milestone {
+  id        String          @id @default(cuid())
+  projectId String          @map("project_id")
+  name      String
+  amount    Decimal         @db.Decimal(10, 2)
+  dueDate   DateTime?       @map("due_date") @db.Date
+  status    MilestoneStatus @default(pending)
+  position  Int             @default(0)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invoiceLineItems InvoiceLineItem[]
+
+  @@index([projectId])
+  @@map("milestones")
+}
+
+// ─── Invoice ────────────────────────────────────────────────────────────────────
+
+model Invoice {
+  id                  String        @id @default(cuid())
+  userId              String        @map("user_id")
+  projectId           String?       @map("project_id")
+  clientId            String?       @map("client_id")
+  invoiceNumber       String        @map("invoice_number")
+  status              InvoiceStatus @default(draft)
+  issuedDate          DateTime?     @map("issued_date") @db.Date
+  dueDate             DateTime      @map("due_date") @db.Date
+  subtotal            Decimal       @db.Decimal(10, 2)
+  taxRate             Decimal       @default(0.00) @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount           Decimal       @map("tax_amount") @db.Decimal(10, 2)
+  total               Decimal       @db.Decimal(10, 2)
+  amountPaid          Decimal       @default(0.00) @map("amount_paid") @db.Decimal(10, 2)
+  balanceDue          Decimal       @map("balance_due") @db.Decimal(10, 2)
+  currency            String        @default("USD") @db.VarChar(3)
+  notes               String?
+  paymentInstructions String?       @map("payment_instructions")
+  sentAt              DateTime?     @map("sent_at")
+  // Snapshot fields (Audit fix #10)
+  clientName          String?       @map("client_name")
+  clientEmail         String?       @map("client_email")
+  clientAddress       String?       @map("client_address")
+  projectName         String?       @map("project_name")
+  fromBusinessName    String?       @map("from_business_name")
+  fromAddress         String?       @map("from_address")
+  fromLogoUrl         String?       @map("from_logo_url")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  client    Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  lineItems InvoiceLineItem[]
+  payments  Payment[]
+
+  @@unique([userId, invoiceNumber])
+  @@index([userId, status])
+  @@index([clientId])
+  @@map("invoices")
+}
+
+// ─── Invoice Line Item ──────────────────────────────────────────────────────────
+
+model InvoiceLineItem {
+  id          String              @id @default(cuid())
+  invoiceId   String              @map("invoice_id")
+  description String
+  quantity    Decimal             @db.Decimal(8, 2)
+  unitPrice   Decimal             @map("unit_price") @db.Decimal(10, 2)
+  amount      Decimal             @db.Decimal(10, 2)
+  type        InvoiceLineItemType
+  timeEntryId String?             @map("time_entry_id")
+  milestoneId String?             @map("milestone_id")
+  position    Int                 @default(0)
+
+  invoice   Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  timeEntry TimeEntry? @relation(fields: [timeEntryId], references: [id], onDelete: SetNull)
+  milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+// ─── Payment ────────────────────────────────────────────────────────────────────
+
+model Payment {
+  id          String   @id @default(cuid())
+  invoiceId   String   @map("invoice_id")
+  amount      Decimal  @db.Decimal(10, 2)
+  paymentDate DateTime @map("payment_date") @db.Date
+  method      String?
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+// ─── File Attachment ────────────────────────────────────────────────────────────
+
+model FileAttachment {
+  id           String       @id @default(cuid())
+  userId       String       @map("user_id")
+  projectId    String?      @map("project_id")
+  taskId       String?      @map("task_id")
+  fileName     String       @map("file_name")
+  fileUrl      String       @map("file_url")
+  fileSize     Int          @map("file_size")
+  mimeType     String       @map("mime_type")
+  uploadSource UploadSource @default(owner) @map("upload_source")
+  uploadedAt   DateTime     @default(now()) @map("uploaded_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  task    Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([taskId])
+  @@map("file_attachments")
+}
+
+// ─── Project Template ───────────────────────────────────────────────────────────
+
+model ProjectTemplate {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  name         String
+  description  String?
+  templateData Json     @map("template_data")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("project_templates")
+}
+
+// ─── Notification ───────────────────────────────────────────────────────────────
+
+model Notification {
+  id            String              @id @default(cuid())
+  userId        String              @map("user_id")
+  type          NotificationType
+  title         String
+  message       String
+  referenceType ReferenceType?      @map("reference_type")
+  referenceId   String?             @map("reference_id")
+  isRead        Boolean             @default(false) @map("is_read")
+  channel       NotificationChannel
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ─── Notification Preference ────────────────────────────────────────────────────
+
+model NotificationPreference {
+  id                              String  @id @default(cuid())
+  userId                          String  @unique @map("user_id")
+  deadlineRemindersEnabled        Boolean @default(true) @map("deadline_reminders_enabled")
+  deadlineReminderDays            Int     @default(2) @map("deadline_reminder_days")
+  budgetAlertsEnabled             Boolean @default(true) @map("budget_alerts_enabled")
+  overdueInvoiceRemindersEnabled  Boolean @default(true) @map("overdue_invoice_reminders_enabled")
+  timeTrackingRemindersEnabled    Boolean @default(false) @map("time_tracking_reminders_enabled")
+  emailChannelEnabled             Boolean @default(true) @map("email_channel_enabled")
+  inAppChannelEnabled             Boolean @default(true) @map("in_app_channel_enabled")
+  quietHoursStart                 String? @map("quiet_hours_start")
+  quietHoursEnd                   String? @map("quiet_hours_end")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+// ─── Calendar Blocked Time ──────────────────────────────────────────────────────
+
+model CalendarBlockedTime {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  title     String
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startDate])
+  @@map("calendar_blocked_times")
+}
+
+// ─── Activity Log ───────────────────────────────────────────────────────────────
+
+model ActivityLog {
+  id         String         @id @default(cuid())
+  userId     String         @map("user_id")
+  entityType String         @map("entity_type")
+  entityId   String         @map("entity_id")
+  action     ActivityAction
+  metadata   Json?
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("activity_logs")
 }
