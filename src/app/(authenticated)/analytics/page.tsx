@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/components/layout/AppShell";
 import { StatCardSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { TrendingUp, DollarSign, Clock, Users } from "lucide-react";
@@ -31,7 +30,7 @@ export default function AnalyticsPage() {
   const totalHoursThisMonth = analyticsData.revenueByMonth[analyticsData.revenueByMonth.length - 1].hours;
 
   return (
-    <AppShell>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
@@ -233,6 +232,6 @@ export default function AnalyticsPage() {
           </div>
         </>
       )}
-    </AppShell>
+    </>
   );
 }

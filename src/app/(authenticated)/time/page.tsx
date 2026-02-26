@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Plus, Clock, Play } from "lucide-react";
@@ -34,7 +33,7 @@ export default function TimePage() {
   const billableHours = filtered.filter((e) => e.billable).reduce((sum, e) => sum + e.hours, 0);
 
   return (
-    <AppShell>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Time Tracking</h1>
@@ -189,6 +188,6 @@ export default function TimePage() {
           )}
         </>
       )}
-    </AppShell>
+    </>
   );
 }

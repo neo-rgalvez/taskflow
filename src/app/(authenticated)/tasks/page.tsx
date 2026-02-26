@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PriorityBadge } from "@/components/ui/PriorityBadge";
 import { TaskCardSkeleton } from "@/components/ui/Skeleton";
@@ -43,7 +42,7 @@ export default function TasksPage() {
   });
 
   return (
-    <AppShell>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Tasks</h1>
@@ -201,6 +200,6 @@ export default function TasksPage() {
           )}
         </>
       )}
-    </AppShell>
+    </>
   );
 }

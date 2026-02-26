@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/components/layout/AppShell";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { AlertTriangle, User, Lock, Bell, Building, Upload } from "lucide-react";
 
@@ -21,7 +20,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <AppShell>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
@@ -403,6 +402,6 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

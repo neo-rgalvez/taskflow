@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -39,7 +38,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
   ];
 
   return (
-    <AppShell>
+    <>
       {/* Back link */}
       <Link
         href="/clients"
@@ -282,6 +281,6 @@ export default function ClientDetailContent({ id }: { id: string }) {
           )}
         </>
       )}
-    </AppShell>
+    </>
   );
 }

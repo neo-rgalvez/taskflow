@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PriorityBadge } from "@/components/ui/PriorityBadge";
 import { KanbanColumnSkeleton } from "@/components/ui/Skeleton";
@@ -48,7 +47,7 @@ export default function ProjectDetailContent({ id }: { id: string }) {
   }));
 
   return (
-    <AppShell>
+    <>
       {/* Breadcrumbs */}
       <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
         <Link href="/projects" className="hover:text-primary-500">Projects</Link>
@@ -388,6 +387,6 @@ export default function ProjectDetailContent({ id }: { id: string }) {
           </div>
         </div>
       )}
-    </AppShell>
+    </>
   );
 }

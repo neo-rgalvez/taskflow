@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -63,7 +62,7 @@ export default function CalendarPage() {
   };
 
   return (
-    <AppShell>
+    <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Calendar</h1>
@@ -211,6 +210,6 @@ export default function CalendarPage() {
           </div>
         </div>
       )}
-    </AppShell>
+    </>
   );
 }
