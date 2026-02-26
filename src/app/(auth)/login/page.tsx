@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
-import { Eye, EyeOff } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [serverError, setServerError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   function validate() {
     const errs: Record<string, string> = {};
@@ -19,12 +23,41 @@ export default function LoginPage() {
     return errs;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submittingRef.current) return;
+
     const errs = validate();
     setErrors(errs);
-    setSubmitted(true);
-    // Mockup — no real auth
+    setServerError("");
+
+    if (Object.keys(errs).length > 0) return;
+
+    submittingRef.current = true;
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setServerError(data.error || "Login failed. Please try again.");
+        return;
+      }
+
+      // Successful login — redirect to dashboard
+      router.push("/dashboard");
+    } catch {
+      setServerError("Network error. Please check your connection.");
+    } finally {
+      setLoading(false);
+      submittingRef.current = false;
+    }
   }
 
   return (
@@ -43,6 +76,12 @@ export default function LoginPage() {
 
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            {serverError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-sm text-red-700">{serverError}</p>
+              </div>
+            )}
+
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
                 Email address
@@ -53,11 +92,12 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); if (errors.email) setErrors((p) => ({ ...p, email: "" })); }}
                 placeholder="e.g., sarah@example.com"
+                disabled={loading}
                 className={`w-full h-10 px-3 border rounded-md text-base focus:outline-none focus:ring-2 transition-colors ${
                   errors.email
                     ? "border-red-500 focus:ring-red-200"
                     : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
-                }`}
+                } ${loading ? "bg-gray-50" : ""}`}
               />
               {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
             </div>
@@ -78,11 +118,12 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); if (errors.password) setErrors((p) => ({ ...p, password: "" })); }}
                   placeholder="Enter your password"
+                  disabled={loading}
                   className={`w-full h-10 px-3 pr-10 border rounded-md text-base focus:outline-none focus:ring-2 transition-colors ${
                     errors.password
                       ? "border-red-500 focus:ring-red-200"
                       : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
-                  }`}
+                  } ${loading ? "bg-gray-50" : ""}`}
                 />
                 <button
                   type="button"
@@ -97,20 +138,19 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              className="w-full h-10 bg-primary-500 text-white font-medium rounded-md hover:bg-primary-600 active:bg-primary-700 transition-colors"
+              disabled={loading}
+              className="w-full h-10 bg-primary-500 text-white font-medium rounded-md hover:bg-primary-600 active:bg-primary-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              Log in
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Logging in...
+                </>
+              ) : (
+                "Log in"
+              )}
             </button>
           </form>
-
-          {submitted && Object.keys(errors).length === 0 && (
-            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-              <p className="text-sm text-green-700">Demo: Validation passed!</p>
-              <Link href="/dashboard" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-green-700 hover:text-green-800">
-                Go to Dashboard <span aria-hidden="true">&rarr;</span>
-              </Link>
-            </div>
-          )}
         </div>
 
         <p className="mt-6 text-center text-sm text-gray-500">

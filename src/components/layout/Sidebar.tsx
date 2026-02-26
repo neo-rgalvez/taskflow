@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Sun,
@@ -23,6 +23,7 @@ import {
   X,
   Home,
   MoreHorizontal,
+  LogOut,
 } from "lucide-react";
 
 const navItems = [
@@ -51,9 +52,15 @@ const mobileNavItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  }
 
   return (
     <>
@@ -195,11 +202,29 @@ export function Sidebar() {
                 <span className="text-xs font-semibold text-primary-700">SF</span>
               </div>
               {!collapsed && (
-                <span className="text-sm font-medium text-gray-700 truncate">
+                <span className="text-sm font-medium text-gray-700 truncate flex-1">
                   Sarah F.
                 </span>
               )}
+              {!collapsed && (
+                <button
+                  onClick={handleLogout}
+                  title="Log out"
+                  className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                >
+                  <LogOut size={16} />
+                </button>
+              )}
             </div>
+            {collapsed && (
+              <button
+                onClick={handleLogout}
+                title="Log out"
+                className="w-full flex items-center justify-center px-3 py-2 mt-1 rounded-md text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <LogOut size={16} />
+              </button>
+            )}
           </div>
 
           {/* Collapse Toggle */}
@@ -269,6 +294,15 @@ export function Sidebar() {
                 </Link>
               );
             })}
+            <div className="border-t border-gray-200 mt-3 pt-3">
+              <button
+                onClick={() => { setMobileMoreOpen(false); handleLogout(); }}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium text-gray-700 hover:bg-gray-100 w-full"
+              >
+                <LogOut size={20} />
+                <span>Log out</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
