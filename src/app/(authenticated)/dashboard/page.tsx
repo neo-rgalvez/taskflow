@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StatCardSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { apiFetch } from "@/lib/api";
 import {
+  Users,
   FolderKanban,
   Clock,
   FileText,
-  CalendarDays,
   TrendingUp,
   ArrowRight,
   Activity,
@@ -17,9 +18,30 @@ import { dashboardStats, recentActivity, projects } from "@/lib/mock-data";
 import { formatDate } from "@/lib/format";
 import Link from "next/link";
 
+interface DashboardStats {
+  totalClients: number;
+}
+
 export default function DashboardPage() {
   const [showSkeleton, setShowSkeleton] = useState(false);
   const [showEmpty, setShowEmpty] = useState(false);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchStats() {
+      setStatsLoading(true);
+      const result = await apiFetch<DashboardStats>("/api/dashboard/stats");
+      if (result.data) {
+        setStats(result.data);
+      }
+      setStatsLoading(false);
+    }
+    fetchStats();
+  }, []);
+
+  // Show empty state if no clients
+  const isEmpty = !statsLoading && stats && stats.totalClients === 0;
 
   return (
     <>
@@ -45,7 +67,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {showEmpty ? (
+      {showEmpty || isEmpty ? (
         <EmptyState
           icon="projects"
           headline="Welcome to TaskFlow"
@@ -57,7 +79,7 @@ export default function DashboardPage() {
         <>
           {/* Stat Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            {showSkeleton ? (
+            {showSkeleton || statsLoading ? (
               <>
                 <StatCardSkeleton />
                 <StatCardSkeleton />
@@ -66,6 +88,15 @@ export default function DashboardPage() {
               </>
             ) : (
               <>
+                <Link href="/clients" className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px] hover:shadow-md hover:border-gray-300 transition-all cursor-pointer">
+                  <div className="flex justify-between items-start">
+                    <p className="text-sm text-gray-500">Total Clients</p>
+                    <Users size={20} className="text-gray-400" />
+                  </div>
+                  <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{stats?.totalClients ?? 0}</p>
+                  <p className="text-sm text-gray-500 mt-1">Active clients</p>
+                </Link>
+
                 <Link href="/projects" className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px] hover:shadow-md hover:border-gray-300 transition-all cursor-pointer">
                   <div className="flex justify-between items-start">
                     <p className="text-sm text-gray-500">Active Projects</p>
@@ -97,15 +128,6 @@ export default function DashboardPage() {
                   </div>
                   <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{dashboardStats.outstandingInvoices}</p>
                   <p className="text-sm text-red-600 mt-1">{dashboardStats.invoiceTrend}</p>
-                </Link>
-
-                <Link href="/calendar" className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px] hover:shadow-md hover:border-gray-300 transition-all cursor-pointer">
-                  <div className="flex justify-between items-start">
-                    <p className="text-sm text-gray-500">Upcoming Deadlines</p>
-                    <CalendarDays size={20} className="text-gray-400" />
-                  </div>
-                  <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{dashboardStats.upcomingDeadlines}</p>
-                  <p className="text-sm text-gray-500 mt-1 truncate">{dashboardStats.nextDeadline}</p>
                 </Link>
               </>
             )}

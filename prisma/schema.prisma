@@ -1,5 +1,6 @@
 // TaskFlow — Prisma Schema
 // Phase A: Foundation (User, Session, PasswordResetToken, EmailVerificationToken)
+// Phase B: Core Data (Client)
 
 generator client {
   provider = "prisma-client-js"
@@ -26,6 +27,7 @@ model User {
   sessions                  Session[]
   passwordResetTokens       PasswordResetToken[]
   emailVerificationTokens   EmailVerificationToken[]
+  clients                   Client[]
 
   @@map("users")
 }
@@ -78,4 +80,25 @@ model EmailVerificationToken {
 
   @@index([userId])
   @@map("email_verification_tokens")
+}
+
+// ─── Client ─────────────────────────────────────────────────────────────────────
+
+model Client {
+  id                  String   @id @default(cuid())
+  userId              String   @map("user_id")
+  name                String
+  contactName         String?  @map("contact_name")
+  email               String?
+  phone               String?
+  defaultHourlyRate   Decimal? @map("default_hourly_rate") @db.Decimal(10, 2)
+  defaultPaymentTerms Int?     @map("default_payment_terms")
+  isArchived          Boolean  @default(false) @map("is_archived")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("clients")
 }

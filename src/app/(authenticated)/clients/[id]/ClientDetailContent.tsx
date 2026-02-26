@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
+import { apiFetch } from "@/lib/api";
+import { formatCurrency } from "@/lib/format";
 import {
   ArrowLeft,
   Mail,
@@ -11,31 +15,333 @@ import {
   FolderKanban,
   FileText,
   Activity,
-  CalendarDays,
+  Pencil,
+  Archive,
+  ArchiveRestore,
+  Trash2,
+  X,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
-import { clients, projects, invoices, recentActivity } from "@/lib/mock-data";
-import { formatDate, formatCurrency } from "@/lib/format";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+
+interface Client {
+  id: string;
+  name: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  defaultHourlyRate: string | null;
+  defaultPaymentTerms: number | null;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 type Tab = "projects" | "invoices" | "activity";
 
+// Color palette for client avatars
+const avatarColors = [
+  "#6366F1", "#EC4899", "#14B8A6", "#F97316", "#8B5CF6",
+  "#EF4444", "#3B82F6", "#22C55E", "#F59E0B", "#06B6D4",
+];
+
+function getAvatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return avatarColors[Math.abs(hash) % avatarColors.length];
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 export default function ClientDetailContent({ id }: { id: string }) {
-  const client = clients.find((c) => c.id === id) || clients[0];
+  const { toast } = useToast();
+  const router = useRouter();
 
+  // Data state
+  const [client, setClient] = useState<Client | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Tab state
   const [activeTab, setActiveTab] = useState<Tab>("projects");
-  const [showSkeleton, setShowSkeleton] = useState(false);
 
-  const clientProjects = projects.filter((p) => p.clientId === client.id);
-  const clientInvoices = invoices.filter((i) =>
-    i.clientName === client.name
-  );
+  // Edit modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    contactName: "",
+    email: "",
+    phone: "",
+    rate: "",
+    terms: "30",
+  });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  // Confirm dialog
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant: "danger" | "warning";
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    confirmLabel: "",
+    variant: "danger",
+    onConfirm: () => {},
+  });
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  // Fetch client
+  const fetchClient = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const result = await apiFetch<Client>(`/api/clients/${id}`);
+    if (result.status === 404) {
+      setError("Client not found.");
+      toast("error", "Client not found.");
+    } else if (result.error) {
+      setError(result.error);
+      toast("error", result.error);
+    } else if (result.data) {
+      setClient(result.data);
+    }
+    setLoading(false);
+  }, [id, toast]);
+
+  useEffect(() => {
+    fetchClient();
+  }, [fetchClient]);
+
+  // Edit
+  function openEditModal() {
+    if (!client) return;
+    setFormData({
+      name: client.name,
+      contactName: client.contactName || "",
+      email: client.email || "",
+      phone: client.phone || "",
+      rate: client.defaultHourlyRate
+        ? String(parseFloat(client.defaultHourlyRate))
+        : "",
+      terms: client.defaultPaymentTerms
+        ? String(client.defaultPaymentTerms)
+        : "30",
+    });
+    setFormErrors({});
+    setShowEditModal(true);
+  }
+
+  const savingRef = useRef(false);
+
+  async function handleSaveClient(e: React.FormEvent) {
+    e.preventDefault();
+    if (!client) return;
+    if (savingRef.current) return;
+
+    const errs: Record<string, string> = {};
+    if (!formData.name.trim()) errs.name = "Client name is required.";
+    if (formData.name.length > 200)
+      errs.name = "Client name must be 200 characters or fewer.";
+    if (
+      formData.email &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)
+    )
+      errs.email = "Please enter a valid email address.";
+    if (
+      formData.rate &&
+      (isNaN(Number(formData.rate)) || Number(formData.rate) < 0)
+    )
+      errs.rate = "Hourly rate must be a positive number.";
+    setFormErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
+    setSaving(true);
+    savingRef.current = true;
+
+    const payload = {
+      name: formData.name.trim(),
+      contactName: formData.contactName.trim() || "",
+      email: formData.email.trim() || "",
+      phone: formData.phone.trim() || "",
+      defaultHourlyRate: formData.rate ? Number(formData.rate) : null,
+      defaultPaymentTerms: Number(formData.terms),
+      updatedAt: client.updatedAt,
+    };
+
+    const result = await apiFetch<Client>(`/api/clients/${client.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+
+    if (result.status === 409) {
+      toast("warning", "This client was modified elsewhere. Refreshing...");
+      fetchClient();
+      setShowEditModal(false);
+    } else if (result.error) {
+      if (result.errors) {
+        const fieldErrors: Record<string, string> = {};
+        for (const [key, msgs] of Object.entries(result.errors)) {
+          fieldErrors[key] = (msgs as string[])[0];
+        }
+        setFormErrors(fieldErrors);
+      } else {
+        toast("error", result.error);
+      }
+    } else {
+      toast("success", `"${formData.name}" updated successfully.`);
+      setShowEditModal(false);
+      fetchClient();
+    }
+
+    setSaving(false);
+    savingRef.current = false;
+  }
+
+  // Archive
+  function handleArchive() {
+    if (!client) return;
+    const action = client.isArchived ? "unarchive" : "archive";
+    setConfirmDialog({
+      open: true,
+      title: `${client.isArchived ? "Unarchive" : "Archive"} Client`,
+      message: client.isArchived
+        ? `Are you sure you want to unarchive "${client.name}"?`
+        : `Are you sure you want to archive "${client.name}"? They will be hidden from your active client list.`,
+      confirmLabel: client.isArchived ? "Unarchive" : "Archive",
+      variant: "warning",
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        const result = await apiFetch(`/api/clients/${client.id}/archive`, {
+          method: "PATCH",
+          body: JSON.stringify({ isArchived: !client.isArchived }),
+        });
+        if (result.error) {
+          toast("error", result.error);
+        } else {
+          toast("success", `"${client.name}" ${action}d successfully.`);
+          fetchClient();
+        }
+        setConfirmLoading(false);
+        setConfirmDialog((prev) => ({ ...prev, open: false }));
+      },
+    });
+  }
+
+  // Delete
+  function handleDelete() {
+    if (!client) return;
+    setConfirmDialog({
+      open: true,
+      title: "Delete Client",
+      message: `Are you sure you want to delete "${client.name}"? This will permanently remove this client and all associated data. This action cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger",
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        const result = await apiFetch(`/api/clients/${client.id}`, {
+          method: "DELETE",
+        });
+        if (result.error) {
+          toast("error", result.error);
+        } else {
+          toast("success", `"${client.name}" deleted successfully.`);
+          router.push("/clients");
+        }
+        setConfirmLoading(false);
+        setConfirmDialog((prev) => ({ ...prev, open: false }));
+      },
+    });
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tabs: { key: Tab; label: string; icon: any; count: number }[] = [
-    { key: "projects", label: "Projects", icon: FolderKanban, count: clientProjects.length },
-    { key: "invoices", label: "Invoices", icon: FileText, count: clientInvoices.length },
-    { key: "activity", label: "Activity", icon: Activity, count: recentActivity.length },
+  const tabs: { key: Tab; label: string; icon: any }[] = [
+    { key: "projects", label: "Projects", icon: FolderKanban },
+    { key: "invoices", label: "Invoices", icon: FileText },
+    { key: "activity", label: "Activity", icon: Activity },
   ];
+
+  // Loading state
+  if (loading) {
+    return (
+      <>
+        <div className="inline-flex items-center gap-1 text-sm text-gray-400 mb-4">
+          <ArrowLeft size={14} /> Back to Clients
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 mb-6">
+          <div className="flex items-start gap-4">
+            <Skeleton className="w-14 h-14 rounded-full" />
+            <div className="flex-1">
+              <Skeleton className="h-7 w-64 rounded mb-2" />
+              <Skeleton className="h-4 w-40 rounded mb-2" />
+              <Skeleton className="h-4 w-56 rounded" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-6 pt-6 border-t border-gray-200">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i}>
+                <Skeleton className="h-3 w-20 rounded mb-2" />
+                <Skeleton className="h-7 w-16 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // Error state
+  if (error || !client) {
+    return (
+      <>
+        <Link
+          href="/clients"
+          className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4 transition-colors"
+        >
+          <ArrowLeft size={14} /> Back to Clients
+        </Link>
+        <div className="flex flex-col items-center justify-center py-16">
+          <AlertCircle size={48} className="text-gray-300 mb-4" />
+          <h2 className="text-lg font-semibold text-gray-700 mb-2">
+            {error || "Client not found"}
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            The client you&apos;re looking for doesn&apos;t exist or you
+            don&apos;t have access.
+          </p>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/dashboard"
+              className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600"
+            >
+              Go to Dashboard
+            </Link>
+            <Link
+              href="/clients"
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Back to Clients
+            </Link>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -53,62 +359,118 @@ export default function ClientDetailContent({ id }: { id: string }) {
           <div className="flex items-start gap-4">
             <div
               className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
-              style={{ backgroundColor: client.color }}
+              style={{ backgroundColor: getAvatarColor(client.name) }}
             >
-              {client.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
+              {getInitials(client.name)}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-gray-900">{client.name}</h1>
-                <StatusBadge status={client.status} />
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {client.name}
+                </h1>
+                <StatusBadge
+                  status={client.isArchived ? "archived" : "active"}
+                />
               </div>
-              <p className="text-sm text-gray-500 mt-0.5">{client.contactName}</p>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {client.contactName || "No contact name"}
+              </p>
               <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                <a href={`mailto:${client.email}`} className="flex items-center gap-1 hover:text-primary-500">
-                  <Mail size={13} /> {client.email}
-                </a>
-                <span className="flex items-center gap-1">
-                  <Phone size={13} /> {client.phone}
-                </span>
+                {client.email && (
+                  <a
+                    href={`mailto:${client.email}`}
+                    className="flex items-center gap-1 hover:text-primary-500"
+                  >
+                    <Mail size={13} /> {client.email}
+                  </a>
+                )}
+                {client.phone && (
+                  <span className="flex items-center gap-1">
+                    <Phone size={13} /> {client.phone}
+                  </span>
+                )}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowSkeleton(!showSkeleton)}
-              className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 rounded-md hover:bg-gray-200"
+              onClick={handleArchive}
+              className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              title={client.isArchived ? "Unarchive" : "Archive"}
             >
-              {showSkeleton ? "Show Data" : "Skeleton"}
+              {client.isArchived ? (
+                <ArchiveRestore size={16} />
+              ) : (
+                <Archive size={16} />
+              )}
             </button>
-            <button className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600">
-              Edit Client
+            <button
+              onClick={handleDelete}
+              className="px-3 py-2 text-sm font-medium text-red-600 bg-white border border-gray-300 rounded-md hover:bg-red-50"
+              title="Delete"
+            >
+              <Trash2 size={16} />
+            </button>
+            <button
+              onClick={openEditModal}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600"
+            >
+              <Pencil size={14} /> Edit Client
             </button>
           </div>
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-200">
-          <div>
-            <p className="text-xs text-gray-500">Active Projects</p>
-            <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">{client.activeProjects}</p>
-          </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-6 pt-6 border-t border-gray-200">
           <div>
             <p className="text-xs text-gray-500">Default Rate</p>
-            <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">${client.defaultRate}/hr</p>
+            <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">
+              {client.defaultHourlyRate
+                ? `${formatCurrency(parseFloat(client.defaultHourlyRate))}/hr`
+                : "—"}
+            </p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Outstanding</p>
-            <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">{client.outstandingInvoices}</p>
+            <p className="text-xs text-gray-500">Payment Terms</p>
+            <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">
+              {client.defaultPaymentTerms
+                ? `Net ${client.defaultPaymentTerms}`
+                : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Total Hours Tracked</p>
+            <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">
+              0h
+            </p>
           </div>
           <div>
             <p className="text-xs text-gray-500">Total Revenue</p>
-            <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">{client.totalRevenue}</p>
+            <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">
+              $0.00
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Status</p>
+            <p className="text-xl font-bold text-gray-900 mt-0.5">
+              {client.isArchived ? "Archived" : "Active"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Created</p>
+            <p className="text-sm font-medium text-gray-900 mt-1.5">
+              {new Date(client.createdAt).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </p>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 mb-6 border-b border-gray-200">
+      <div className="flex items-center gap-1 mb-6 border-b border-gray-200 overflow-x-auto">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -123,164 +485,233 @@ export default function ClientDetailContent({ id }: { id: string }) {
             >
               <Icon size={15} />
               {tab.label}
-              <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${
-                activeTab === tab.key ? "bg-primary-100 text-primary-700" : "bg-gray-100 text-gray-500"
-              }`}>
-                {tab.count}
-              </span>
             </button>
           );
         })}
       </div>
 
-      {/* Tab Content */}
-      {showSkeleton ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
-              <div className="flex items-center gap-3">
-                <Skeleton className="w-10 h-10 rounded" />
-                <div className="flex-1">
-                  <Skeleton className="h-4 w-48 rounded mb-2" />
-                  <Skeleton className="h-3 w-32 rounded" />
-                </div>
-                <Skeleton className="h-6 w-16 rounded-full" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <>
-          {/* Projects Tab */}
-          {activeTab === "projects" && (
-            <>
-              {clientProjects.length === 0 ? (
-                <EmptyState
-                  icon="projects"
-                  headline="No projects for this client"
-                  description="Create a new project to start tracking work for this client."
-                  ctaLabel="+ Create Project"
-                />
-              ) : (
-                <div className="space-y-3">
-                  {clientProjects.map((project) => {
-                    const budgetPercent = project.budgetHours
-                      ? Math.round((project.hoursTracked / project.budgetHours) * 100)
-                      : 0;
-                    return (
-                      <Link
-                        key={project.id}
-                        href={`/projects/${project.id}`}
-                        className="block bg-white rounded-lg border border-gray-200 shadow-sm p-5 hover:shadow-md hover:border-gray-300 transition-all"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-semibold text-gray-800">{project.name}</h3>
-                            <StatusBadge status={project.status} />
-                          </div>
-                          <span className="text-xs text-gray-500 flex items-center gap-1">
-                            <CalendarDays size={12} />
-                            {formatDate(project.deadline)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
-                          <span>{project.taskCount} tasks</span>
-                          {project.overdueTaskCount > 0 && (
-                            <span className="text-red-500">{project.overdueTaskCount} overdue</span>
-                          )}
-                          <span className="font-mono">
-                            {project.billingType === "hourly"
-                              ? `$${project.hourlyRate}/hr`
-                              : formatCurrency(project.fixedPrice || 0)}
-                          </span>
-                        </div>
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs text-gray-500">Budget</span>
-                            <span className="text-xs font-mono text-gray-500">
-                              {project.hoursTracked} / {project.budgetHours}h ({budgetPercent}%)
-                            </span>
-                          </div>
-                          <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all ${
-                                budgetPercent >= 100
-                                  ? "bg-red-500"
-                                  : budgetPercent >= 80
-                                    ? "bg-amber-500"
-                                    : "bg-primary-500"
-                              }`}
-                              style={{ width: `${Math.min(budgetPercent, 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Invoices Tab */}
-          {activeTab === "invoices" && (
-            <>
-              {clientInvoices.length === 0 ? (
-                <EmptyState
-                  icon="invoices"
-                  headline="No invoices for this client"
-                  description="Create an invoice to start billing this client."
-                  ctaLabel="+ Create Invoice"
-                />
-              ) : (
-                <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50">
-                        <th className="text-left px-4 py-3 font-medium text-gray-600">Invoice</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-600">Amount</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-600">Issued</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-600">Due</th>
-                        <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {clientInvoices.map((inv) => (
-                        <tr key={inv.id} className="hover:bg-gray-50 transition-colors cursor-pointer">
-                          <td className="px-4 py-3 font-mono font-medium text-gray-800">{inv.number}</td>
-                          <td className="px-4 py-3 font-mono font-semibold text-gray-800">{inv.amount}</td>
-                          <td className="px-4 py-3 text-gray-500">{inv.issuedDate}</td>
-                          <td className="px-4 py-3">
-                            <span className={inv.status === "overdue" ? "text-red-600 font-semibold" : "text-gray-500"}>
-                              {inv.dueDate}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <StatusBadge status={inv.status} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Activity Tab */}
-          {activeTab === "activity" && (
-            <div className="bg-white rounded-lg border border-gray-200 shadow-sm divide-y divide-gray-100">
-              {recentActivity.map((activity) => (
-                <div key={activity.id} className="px-5 py-3">
-                  <p className="text-sm text-gray-700">{activity.action}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 truncate">{activity.detail}</p>
-                  <p className="text-xs text-gray-400 mt-1">{activity.time}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
+      {/* Tab Content — Projects, Invoices, Activity not yet connected to real data */}
+      {activeTab === "projects" && (
+        <EmptyState
+          icon="projects"
+          headline="No projects for this client"
+          description="Create a new project to start tracking work for this client."
+          ctaLabel="+ Create Project"
+        />
       )}
+
+      {activeTab === "invoices" && (
+        <EmptyState
+          icon="invoices"
+          headline="No invoices for this client"
+          description="Create an invoice to start billing this client."
+          ctaLabel="+ Create Invoice"
+        />
+      )}
+
+      {activeTab === "activity" && (
+        <EmptyState
+          icon="tasks"
+          headline="No activity yet"
+          description="Activity for this client will appear here as you work."
+        />
+      )}
+
+      {/* Edit Client Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/50"
+            onClick={() => !saving && setShowEditModal(false)}
+          />
+          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6 animate-fade-in">
+            <button
+              onClick={() => !saving && setShowEditModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              disabled={saving}
+            >
+              <X size={20} />
+            </button>
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">
+              Edit Client
+            </h2>
+            <form onSubmit={handleSaveClient} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Client / Company Name{" "}
+                  <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => {
+                    setFormData({ ...formData, name: e.target.value });
+                    if (formErrors.name)
+                      setFormErrors((prev) => ({ ...prev, name: "" }));
+                  }}
+                  placeholder="e.g., Acme Corp"
+                  className={`w-full h-10 px-3 border rounded-md text-base focus:outline-none focus:ring-2 ${
+                    formErrors.name
+                      ? "border-red-500 focus:ring-red-200"
+                      : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
+                  }`}
+                  disabled={saving}
+                />
+                {formErrors.name && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {formErrors.name}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Contact Name
+                </label>
+                <input
+                  type="text"
+                  value={formData.contactName}
+                  onChange={(e) =>
+                    setFormData({ ...formData, contactName: e.target.value })
+                  }
+                  placeholder="e.g., Jane Smith"
+                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => {
+                      setFormData({ ...formData, email: e.target.value });
+                      if (formErrors.email)
+                        setFormErrors((prev) => ({ ...prev, email: "" }));
+                    }}
+                    placeholder="e.g., jane@acme.com"
+                    className={`w-full h-10 px-3 border rounded-md text-base focus:outline-none focus:ring-2 ${
+                      formErrors.email
+                        ? "border-red-500 focus:ring-red-200"
+                        : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
+                    }`}
+                    disabled={saving}
+                  />
+                  {formErrors.email && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {formErrors.email}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Phone
+                  </label>
+                  <input
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone: e.target.value })
+                    }
+                    placeholder="e.g., (555) 123-4567"
+                    className="w-full h-10 px-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                    disabled={saving}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Default Hourly Rate
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                      $
+                    </span>
+                    <input
+                      type="text"
+                      value={formData.rate}
+                      onChange={(e) => {
+                        setFormData({ ...formData, rate: e.target.value });
+                        if (formErrors.rate)
+                          setFormErrors((prev) => ({ ...prev, rate: "" }));
+                      }}
+                      placeholder="0.00"
+                      className={`w-full h-10 pl-7 pr-3 border rounded-md text-base font-mono focus:outline-none focus:ring-2 ${
+                        formErrors.rate
+                          ? "border-red-500 focus:ring-red-200"
+                          : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
+                      }`}
+                      disabled={saving}
+                    />
+                  </div>
+                  {formErrors.rate && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {formErrors.rate}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Payment Terms
+                  </label>
+                  <select
+                    value={formData.terms}
+                    onChange={(e) =>
+                      setFormData({ ...formData, terms: e.target.value })
+                    }
+                    className="w-full h-10 px-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                    disabled={saving}
+                  >
+                    <option value="15">Net 15</option>
+                    <option value="30">Net 30</option>
+                    <option value="45">Net 45</option>
+                    <option value="60">Net 60</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  disabled={saving}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 disabled:opacity-50 inline-flex items-center gap-2"
+                >
+                  {saving && <Loader2 size={14} className="animate-spin" />}
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel={confirmDialog.confirmLabel}
+        variant={confirmDialog.variant}
+        loading={confirmLoading}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() =>
+          setConfirmDialog((prev) => ({ ...prev, open: false }))
+        }
+      />
     </>
   );
 }
