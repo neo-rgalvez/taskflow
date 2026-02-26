@@ -37,11 +37,11 @@ function ActiveTimerBar() {
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, userName }: { children: React.ReactNode; userName?: string }) {
   return (
     <div className="min-h-screen bg-gray-50">
-      <Sidebar />
-      <MobileHeader />
+      <Sidebar userName={userName} />
+      <MobileHeader userName={userName} />
       <main className="lg:pl-60 pb-28 lg:pb-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           {children}

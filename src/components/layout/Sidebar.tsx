@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Sun,
@@ -23,6 +23,7 @@ import {
   X,
   Home,
   MoreHorizontal,
+  LogOut,
 } from "lucide-react";
 
 const navItems = [
@@ -49,11 +50,46 @@ const mobileNavItems = [
   { href: "/invoices", label: "Invoices", icon: FileText },
 ];
 
-export function Sidebar() {
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+}
+
+function getShortName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+  }
+  return parts[0];
+}
+
+export function Sidebar({ userName }: { userName?: string }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  const displayName = userName || "User";
+  const initials = getInitials(displayName);
+  const shortName = getShortName(displayName);
+
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } catch {
+      // Even on error, redirect to login
+      router.push("/login");
+    }
+  }
 
   return (
     <>
@@ -188,17 +224,25 @@ export function Sidebar() {
             </div>
           )}
 
-          {/* User */}
+          {/* User + Sign Out */}
           <div className="border-t border-gray-200 mt-3 pt-3">
             <div className="flex items-center gap-3 px-3">
               <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-semibold text-primary-700">SF</span>
+                <span className="text-xs font-semibold text-primary-700">{initials}</span>
               </div>
               {!collapsed && (
-                <span className="text-sm font-medium text-gray-700 truncate">
-                  Sarah F.
+                <span className="text-sm font-medium text-gray-700 truncate flex-1">
+                  {shortName}
                 </span>
               )}
+              <button
+                onClick={handleSignOut}
+                disabled={signingOut}
+                className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
+                title="Sign out"
+              >
+                <LogOut size={16} />
+              </button>
             </div>
           </div>
 
@@ -269,6 +313,16 @@ export function Sidebar() {
                 </Link>
               );
             })}
+            <div className="border-t border-gray-200 mt-4 pt-4">
+              <button
+                onClick={handleSignOut}
+                disabled={signingOut}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium text-red-600 hover:bg-red-50 w-full"
+              >
+                <LogOut size={20} />
+                <span>Sign out</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -276,15 +330,29 @@ export function Sidebar() {
   );
 }
 
-export function MobileHeader() {
+export function MobileHeader({ userName }: { userName?: string }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const allItems = [
     ...navItems,
     { href: "/analytics", label: "Analytics", icon: BarChart3 },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
+
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } catch {
+      router.push("/login");
+    }
+  }
 
   return (
     <>
@@ -333,6 +401,21 @@ export function MobileHeader() {
                 </Link>
               );
             })}
+            <div className="border-t border-gray-200 mt-4 pt-4">
+              {userName && (
+                <p className="px-4 py-2 text-sm text-gray-500">
+                  Signed in as <span className="font-medium text-gray-700">{userName}</span>
+                </p>
+              )}
+              <button
+                onClick={handleSignOut}
+                disabled={signingOut}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium text-red-600 hover:bg-red-50 w-full"
+              >
+                <LogOut size={20} />
+                <span>Sign out</span>
+              </button>
+            </div>
           </nav>
         </div>
       )}

@@ -2,29 +2,69 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Eye, EyeOff } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [serverError, setServerError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   function validate() {
     const errs: Record<string, string> = {};
     if (!email) errs.email = "Email is required.";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Please enter a valid email address.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      errs.email = "Please enter a valid email address.";
     if (!password) errs.password = "Password is required.";
     return errs;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setServerError("");
+
     const errs = validate();
     setErrors(errs);
-    setSubmitted(true);
-    // Mockup — no real auth
+    if (Object.keys(errs).length > 0) return;
+
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.errors) {
+          setErrors(
+            Object.fromEntries(
+              Object.entries(data.errors).map(([k, v]) => [
+                k,
+                Array.isArray(v) ? v[0] : v,
+              ])
+            ) as Record<string, string>
+          );
+        } else {
+          setServerError(data.error || "Something went wrong. Please try again.");
+        }
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      setServerError("Unable to connect. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -38,20 +78,35 @@ export default function LoginPage() {
             <span className="text-xl font-bold text-gray-900">TaskFlow</span>
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
-          <p className="mt-2 text-sm text-gray-500">Log in to your account to continue</p>
+          <p className="mt-2 text-sm text-gray-500">
+            Log in to your account to continue
+          </p>
         </div>
 
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+          {serverError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm text-red-700">{serverError}</p>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-gray-700 mb-1.5"
+              >
                 Email address
               </label>
               <input
                 id="email"
                 type="email"
+                autoComplete="email"
                 value={email}
-                onChange={(e) => { setEmail(e.target.value); if (errors.email) setErrors((p) => ({ ...p, email: "" })); }}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (errors.email) setErrors((p) => ({ ...p, email: "" }));
+                }}
                 placeholder="e.g., sarah@example.com"
                 className={`w-full h-10 px-3 border rounded-md text-base focus:outline-none focus:ring-2 transition-colors ${
                   errors.email
@@ -59,24 +114,31 @@ export default function LoginPage() {
                     : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
                 }`}
               />
-              {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
+              {errors.email && (
+                <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+              )}
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-gray-700"
+                >
                   Password
                 </label>
-                <a href="#" className="text-xs text-primary-500 hover:text-primary-700">
-                  Forgot password?
-                </a>
               </div>
               <div className="relative">
                 <input
                   id="password"
                   type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
                   value={password}
-                  onChange={(e) => { setPassword(e.target.value); if (errors.password) setErrors((p) => ({ ...p, password: "" })); }}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (errors.password)
+                      setErrors((p) => ({ ...p, password: "" }));
+                  }}
                   placeholder="Enter your password"
                   className={`w-full h-10 px-3 pr-10 border rounded-md text-base focus:outline-none focus:ring-2 transition-colors ${
                     errors.password
@@ -92,30 +154,34 @@ export default function LoginPage() {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
+              {errors.password && (
+                <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+              )}
             </div>
 
             <button
               type="submit"
-              className="w-full h-10 bg-primary-500 text-white font-medium rounded-md hover:bg-primary-600 active:bg-primary-700 transition-colors"
+              disabled={loading}
+              className="w-full h-10 bg-primary-500 text-white font-medium rounded-md hover:bg-primary-600 active:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              Log in
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Logging in...
+                </>
+              ) : (
+                "Log in"
+              )}
             </button>
           </form>
-
-          {submitted && Object.keys(errors).length === 0 && (
-            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-              <p className="text-sm text-green-700">Demo: Validation passed!</p>
-              <Link href="/dashboard" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-green-700 hover:text-green-800">
-                Go to Dashboard <span aria-hidden="true">&rarr;</span>
-              </Link>
-            </div>
-          )}
         </div>
 
         <p className="mt-6 text-center text-sm text-gray-500">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="text-primary-500 font-medium hover:text-primary-700">
+          <Link
+            href="/signup"
+            className="text-primary-500 font-medium hover:text-primary-700"
+          >
             Sign up
           </Link>
         </p>
