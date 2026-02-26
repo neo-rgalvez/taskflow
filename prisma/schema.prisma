@@ -1,6 +1,7 @@
 // TaskFlow — Prisma Schema
 // Phase A: Foundation (User, Session, PasswordResetToken, EmailVerificationToken)
 // Phase B: Core Data (Client)
+// Phase C: Projects
 
 generator client {
   provider = "prisma-client-js"
@@ -28,6 +29,7 @@ model User {
   passwordResetTokens       PasswordResetToken[]
   emailVerificationTokens   EmailVerificationToken[]
   clients                   Client[]
+  projects                  Project[]
 
   @@map("users")
 }
@@ -97,8 +99,49 @@ model Client {
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects Project[]
 
   @@index([userId])
   @@map("clients")
+}
+
+// ─── Project ─────────────────────────────────────────────────────────────────────
+
+enum ProjectStatus {
+  active
+  on_hold
+  completed
+  cancelled
+}
+
+enum BillingType {
+  hourly
+  fixed_price
+}
+
+model Project {
+  id                    String        @id @default(cuid())
+  userId                String        @map("user_id")
+  clientId              String        @map("client_id")
+  name                  String
+  description           String?
+  status                ProjectStatus @default(active)
+  billingType           BillingType   @map("billing_type")
+  hourlyRate            Decimal?      @map("hourly_rate") @db.Decimal(10, 2)
+  fixedPrice            Decimal?      @map("fixed_price") @db.Decimal(10, 2)
+  budgetHours           Decimal?      @map("budget_hours") @db.Decimal(10, 2)
+  budgetAmount          Decimal?      @map("budget_amount") @db.Decimal(10, 2)
+  deadline              DateTime?     @db.Date
+  color                 String        @default("#6366F1")
+  budgetAlertThreshold  Decimal       @default(0.80) @map("budget_alert_threshold") @db.Decimal(3, 2)
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clientId])
+  @@map("projects")
 }
