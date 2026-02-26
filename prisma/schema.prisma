@@ -98,6 +98,7 @@ model User {
   name                String
   emailVerified       Boolean   @default(false) @map("email_verified")
   timezone            String    @default("UTC")
+  lastLoginAt         DateTime? @map("last_login_at")
   scheduledDeletionAt DateTime? @map("scheduled_deletion_at")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
@@ -232,6 +233,7 @@ model Project {
   budgetAmount          Decimal?      @map("budget_amount") @db.Decimal(10, 2)
   budgetAlertThreshold  Decimal       @default(0.80) @map("budget_alert_threshold") @db.Decimal(3, 2)
   deadline              DateTime?     @db.Date
+  portalToken           String?       @unique @map("portal_token")
   color                 String        @default("#6366F1")
   createdAt             DateTime      @default(now()) @map("created_at")
   updatedAt             DateTime      @updatedAt @map("updated_at")
