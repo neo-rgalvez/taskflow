@@ -96,7 +96,7 @@ export async function createSession(
   cookieStore.set(SESSION_COOKIE_NAME, signedToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "strict",
     path: "/",
     maxAge: SESSION_ABSOLUTE_MAX_DAYS * 24 * 60 * 60,
   });
@@ -193,7 +193,7 @@ export async function destroySession(): Promise<void> {
   cookieStore.set(SESSION_COOKIE_NAME, "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "strict",
     path: "/",
     maxAge: 0,
   });
@@ -209,6 +209,46 @@ export async function destroyAllSessionsExcept(
       id: { not: currentSessionId },
     },
   });
+}
+
+// ─── Auth Guards (for API routes) ────────────────────────────────────────────
+
+export class AuthError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number
+  ) {
+    super(message);
+    this.name = "AuthError";
+  }
+}
+
+/**
+ * Returns session or throws 401.
+ * Use in API routes where authentication is required.
+ */
+export async function requireAuth(): Promise<{
+  userId: string;
+  sessionId: string;
+  user: { id: string; name: string; email: string; emailVerified: boolean };
+}> {
+  const session = await getSession();
+  if (!session) {
+    throw new AuthError("Authentication required.", 401);
+  }
+  return session;
+}
+
+/**
+ * Throws 403 if the authenticated user doesn't own the resource.
+ */
+export function requireOwnership(
+  authenticatedUserId: string,
+  resourceOwnerId: string
+): void {
+  if (authenticatedUserId !== resourceOwnerId) {
+    throw new AuthError("Access denied.", 403);
+  }
 }
 
 // ─── Session check for middleware (lightweight, cookie-only) ─────────────────

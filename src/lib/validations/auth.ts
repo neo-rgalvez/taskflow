@@ -4,9 +4,18 @@ export const signupSchema = z
   .object({
     name: z
       .string()
-      .trim()
-      .min(1, "Full name is required.")
-      .max(200, "Name must be under 200 characters."),
+      .transform((v) =>
+        v
+          .replace(/[\x00-\x1F\x7F]/g, "") // strip control characters
+          .replace(/\s+/g, " ") // collapse whitespace
+          .trim()
+      )
+      .pipe(
+        z
+          .string()
+          .min(1, "Full name is required.")
+          .max(200, "Name must be under 200 characters.")
+      ),
     email: z
       .string()
       .trim()

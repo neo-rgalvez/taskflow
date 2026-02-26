@@ -4,6 +4,8 @@ import { hashPassword, createSession } from "@/lib/auth";
 import { signupSchema } from "@/lib/validations/auth";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
 
+const AUTH_HEADERS = { "Cache-Control": "no-store" };
+
 export async function POST(req: NextRequest) {
   try {
     // 1. Rate limit
@@ -12,17 +14,25 @@ export async function POST(req: NextRequest) {
     if (!rateLimitResult.success) {
       return NextResponse.json(
         { error: "Too many signup attempts. Please try again later." },
-        { status: 429 }
+        { status: 429, headers: AUTH_HEADERS }
       );
     }
 
     // 2. Parse and validate
-    const body = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid request body." },
+        { status: 400, headers: AUTH_HEADERS }
+      );
+    }
     const parsed = signupSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
         { errors: parsed.error.flatten().fieldErrors },
-        { status: 422 }
+        { status: 422, headers: AUTH_HEADERS }
       );
     }
 
@@ -31,10 +41,9 @@ export async function POST(req: NextRequest) {
     // 3. Check if email already exists
     const existing = await db.user.findUnique({ where: { email } });
     if (existing) {
-      // Generic message to prevent email enumeration
       return NextResponse.json(
         { error: "An account with this email already exists." },
-        { status: 409 }
+        { status: 409, headers: AUTH_HEADERS }
       );
     }
 
@@ -61,13 +70,13 @@ export async function POST(req: NextRequest) {
           email: user.email,
         },
       },
-      { status: 201 }
+      { status: 201, headers: AUTH_HEADERS }
     );
   } catch (error) {
     console.error("Signup error:", error);
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
-      { status: 500 }
+      { status: 500, headers: AUTH_HEADERS }
     );
   }
 }
