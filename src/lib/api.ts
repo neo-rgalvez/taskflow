@@ -15,9 +15,11 @@ export async function apiFetch<T>(
       ...options,
     });
 
-    // Handle 401 — redirect to login
+    // Handle 401 — redirect to login (full page load to trigger middleware)
     if (res.status === 401) {
-      window.location.href = "/login";
+      const currentPath = window.location.pathname;
+      const loginUrl = `/login${currentPath !== "/login" ? `?returnUrl=${encodeURIComponent(currentPath)}` : ""}`;
+      window.location.replace(loginUrl);
       return { error: "Unauthorized", status: 401 };
     }
 
