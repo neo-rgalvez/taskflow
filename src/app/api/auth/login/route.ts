@@ -17,7 +17,13 @@ export async function POST(req: NextRequest) {
     if (!rateLimitResult.success) {
       return NextResponse.json(
         { error: "Too many login attempts. Please try again in 15 minutes." },
-        { status: 429, headers: AUTH_HEADERS }
+        {
+          status: 429,
+          headers: {
+            ...AUTH_HEADERS,
+            "Retry-After": String(rateLimitResult.retryAfter),
+          },
+        }
       );
     }
 

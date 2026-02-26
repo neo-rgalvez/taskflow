@@ -23,7 +23,7 @@ function checkLimit(
   key: string,
   maxRequests: number,
   windowMs: number
-): { success: boolean; remaining: number } {
+): { success: boolean; remaining: number; retryAfter: number } {
   try {
     const store = getStore(storeName);
     const now = Date.now();
@@ -31,18 +31,19 @@ function checkLimit(
 
     if (!entry || now > entry.resetAt) {
       store.set(key, { count: 1, resetAt: now + windowMs });
-      return { success: true, remaining: maxRequests - 1 };
+      return { success: true, remaining: maxRequests - 1, retryAfter: 0 };
     }
 
     if (entry.count >= maxRequests) {
-      return { success: false, remaining: 0 };
+      const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+      return { success: false, remaining: 0, retryAfter };
     }
 
     entry.count++;
-    return { success: true, remaining: maxRequests - entry.count };
+    return { success: true, remaining: maxRequests - entry.count, retryAfter: 0 };
   } catch {
     // Fail open
-    return { success: true, remaining: 1 };
+    return { success: true, remaining: 1, retryAfter: 0 };
   }
 }
 
