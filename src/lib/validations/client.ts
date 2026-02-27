@@ -34,7 +34,7 @@ export const createClientSchema = z.object({
   notes: z
     .string()
     .trim()
-    .max(5000, "Notes are too long.")
+    .max(50000, "Notes are too long.")
     .optional()
     .or(z.literal("")),
   defaultHourlyRate: z

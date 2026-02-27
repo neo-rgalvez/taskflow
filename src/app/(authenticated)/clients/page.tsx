@@ -292,15 +292,28 @@ export default function ClientsPage() {
   }
 
   // Archive / Unarchive
-  function handleArchive(client: Client) {
+  async function handleArchive(client: Client) {
     setActiveMenu(null);
     const action = client.isArchived ? "unarchive" : "archive";
+
+    let message: string;
+    if (client.isArchived) {
+      message = `Are you sure you want to unarchive "${client.name}"? They will appear in your active client list again.`;
+    } else {
+      // Fetch summary to warn about outstanding invoices
+      const summary = await apiFetch<{ outstandingInvoiceAmount: number }>(
+        `/api/clients/${client.id}/summary`
+      );
+      const outstanding = summary.data?.outstandingInvoiceAmount ?? 0;
+      message = outstanding > 0
+        ? `This client has $${outstanding.toLocaleString("en-US", { minimumFractionDigits: 2 })} in outstanding invoices. Archive anyway?`
+        : `Are you sure you want to archive "${client.name}"? They will be hidden from your active client list.`;
+    }
+
     setConfirmDialog({
       open: true,
       title: `${client.isArchived ? "Unarchive" : "Archive"} Client`,
-      message: client.isArchived
-        ? `Are you sure you want to unarchive "${client.name}"? They will appear in your active client list again.`
-        : `Are you sure you want to archive "${client.name}"? They will be hidden from your active client list.`,
+      message,
       confirmLabel: client.isArchived ? "Unarchive" : "Archive",
       variant: "warning",
       onConfirm: async () => {
@@ -322,12 +335,23 @@ export default function ClientsPage() {
   }
 
   // Delete
-  function handleDelete(client: Client) {
+  async function handleDelete(client: Client) {
     setActiveMenu(null);
+
+    // Fetch summary to warn about active projects
+    const summary = await apiFetch<{ activeProjectCount: number }>(
+      `/api/clients/${client.id}/summary`
+    );
+    const projectCount = summary.data?.activeProjectCount ?? 0;
+
+    const message = projectCount > 0
+      ? `This client has ${projectCount} active project${projectCount !== 1 ? "s" : ""}. Archiving is recommended. Delete anyway?\n\nThis will permanently remove this client and all associated data. This action cannot be undone.`
+      : `Are you sure you want to delete "${client.name}"? This will permanently remove this client and all associated data. This action cannot be undone.`;
+
     setConfirmDialog({
       open: true,
       title: "Delete Client",
-      message: `Are you sure you want to delete "${client.name}"? This will permanently remove this client and all associated data. This action cannot be undone.`,
+      message,
       confirmLabel: "Delete",
       variant: "danger",
       onConfirm: async () => {
