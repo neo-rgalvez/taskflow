@@ -31,21 +31,32 @@ export async function PATCH(
     );
   }
 
-  const client = await db.client.findFirst({
-    where: { id: params.id, userId: auth.userId },
-  });
+  try {
+    // Use updateMany with userId to ensure ownership atomically
+    const result = await db.client.updateMany({
+      where: { id: params.id, userId: auth.userId },
+      data: { isArchived: parsed.data.isArchived },
+    });
 
-  if (!client) {
+    if (result.count === 0) {
+      return NextResponse.json(
+        { error: "Client not found" },
+        { status: 404 }
+      );
+    }
+
+    const updated = await db.client.findFirst({
+      where: { id: params.id, userId: auth.userId },
+    });
+
+    return NextResponse.json(updated);
+  } catch {
     return NextResponse.json(
-      { error: "Client not found" },
-      { status: 404 }
+      {
+        error:
+          "Something went wrong on our end. We've been notified and are looking into it.",
+      },
+      { status: 500 }
     );
   }
-
-  const updated = await db.client.update({
-    where: { id: params.id },
-    data: { isArchived: parsed.data.isArchived },
-  });
-
-  return NextResponse.json(updated);
 }

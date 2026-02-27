@@ -28,8 +28,10 @@ interface Client {
   contactName: string | null;
   email: string | null;
   phone: string | null;
+  address: string | null;
+  notes: string | null;
   defaultHourlyRate: string | null;
-  defaultPaymentTerms: number | null;
+  defaultPaymentTerms: number;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -90,6 +92,8 @@ export default function ClientsPage() {
     contactName: "",
     email: "",
     phone: "",
+    address: "",
+    notes: "",
     rate: "",
     terms: "30",
   });
@@ -177,7 +181,7 @@ export default function ClientsPage() {
   // Form handlers
   function openCreateModal() {
     setEditingClient(null);
-    setFormData({ name: "", contactName: "", email: "", phone: "", rate: "", terms: "30" });
+    setFormData({ name: "", contactName: "", email: "", phone: "", address: "", notes: "", rate: "", terms: "30" });
     setFormErrors({});
     setShowModal(true);
   }
@@ -189,8 +193,10 @@ export default function ClientsPage() {
       contactName: client.contactName || "",
       email: client.email || "",
       phone: client.phone || "",
+      address: client.address || "",
+      notes: client.notes || "",
       rate: client.defaultHourlyRate ? String(parseFloat(client.defaultHourlyRate)) : "",
-      terms: client.defaultPaymentTerms ? String(client.defaultPaymentTerms) : "30",
+      terms: String(client.defaultPaymentTerms),
     });
     setFormErrors({});
     setShowModal(true);
@@ -206,8 +212,9 @@ export default function ClientsPage() {
 
     // Client-side validation
     const errs: Record<string, string> = {};
-    if (!formData.name.trim()) errs.name = "Client name is required.";
-    if (formData.name.length > 200) errs.name = "Client name must be 200 characters or fewer.";
+    const trimmedName = formData.name.trim();
+    if (!trimmedName) errs.name = "Client name is required.";
+    else if (trimmedName.length > 200) errs.name = "Client name is too long.";
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email))
       errs.email = "Please enter a valid email address.";
     if (formData.rate && (isNaN(Number(formData.rate)) || Number(formData.rate) < 0))
@@ -223,6 +230,8 @@ export default function ClientsPage() {
       contactName: formData.contactName.trim() || "",
       email: formData.email.trim() || "",
       phone: formData.phone.trim() || "",
+      address: formData.address.trim() || "",
+      notes: formData.notes.trim() || "",
       defaultHourlyRate: formData.rate ? Number(formData.rate) : null,
       defaultPaymentTerms: Number(formData.terms),
     };
@@ -607,7 +616,7 @@ export default function ClientsPage() {
             className="fixed inset-0 bg-black/50"
             onClick={() => !saving && setShowModal(false)}
           />
-          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6 animate-fade-in">
+          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 animate-fade-in">
             <button
               onClick={() => !saving && setShowModal(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -700,6 +709,38 @@ export default function ClientsPage() {
                     disabled={saving}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Address
+                </label>
+                <textarea
+                  value={formData.address}
+                  onChange={(e) =>
+                    setFormData({ ...formData, address: e.target.value })
+                  }
+                  placeholder="Full mailing address"
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200 resize-none"
+                  disabled={saving}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Notes
+                </label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) =>
+                    setFormData({ ...formData, notes: e.target.value })
+                  }
+                  placeholder="Freeform notes about this client"
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200 resize-none"
+                  disabled={saving}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">

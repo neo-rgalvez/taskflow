@@ -13,15 +13,28 @@ export async function GET(
   const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
-  const client = await db.client.findFirst({
-    where: { id: params.id, userId: auth.userId },
-  });
+  try {
+    const client = await db.client.findFirst({
+      where: { id: params.id, userId: auth.userId },
+    });
 
-  if (!client) {
-    return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    if (!client) {
+      return NextResponse.json(
+        { error: "Client not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(client);
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          "Something went wrong on our end. We've been notified and are looking into it.",
+      },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json(client);
 }
 
 /**
@@ -54,58 +67,74 @@ export async function PATCH(
 
   const { updatedAt: clientUpdatedAt, ...updateData } = parsed.data;
 
-  // Optimistic locking: only update if updatedAt matches
-  const result = await db.client.updateMany({
-    where: {
-      id: params.id,
-      userId: auth.userId,
-      updatedAt: new Date(clientUpdatedAt),
-    },
-    data: {
-      ...(updateData.name !== undefined ? { name: updateData.name } : {}),
-      ...(updateData.contactName !== undefined
-        ? { contactName: updateData.contactName || null }
-        : {}),
-      ...(updateData.email !== undefined
-        ? { email: updateData.email || null }
-        : {}),
-      ...(updateData.phone !== undefined
-        ? { phone: updateData.phone || null }
-        : {}),
-      ...(updateData.defaultHourlyRate !== undefined
-        ? { defaultHourlyRate: updateData.defaultHourlyRate }
-        : {}),
-      ...(updateData.defaultPaymentTerms !== undefined
-        ? { defaultPaymentTerms: updateData.defaultPaymentTerms }
-        : {}),
-    },
-  });
-
-  if (result.count === 0) {
-    const exists = await db.client.findFirst({
-      where: { id: params.id, userId: auth.userId },
+  try {
+    // Optimistic locking: only update if updatedAt matches
+    const result = await db.client.updateMany({
+      where: {
+        id: params.id,
+        userId: auth.userId,
+        updatedAt: new Date(clientUpdatedAt),
+      },
+      data: {
+        ...(updateData.name !== undefined ? { name: updateData.name } : {}),
+        ...(updateData.contactName !== undefined
+          ? { contactName: updateData.contactName || null }
+          : {}),
+        ...(updateData.email !== undefined
+          ? { email: updateData.email || null }
+          : {}),
+        ...(updateData.phone !== undefined
+          ? { phone: updateData.phone || null }
+          : {}),
+        ...(updateData.address !== undefined
+          ? { address: updateData.address || null }
+          : {}),
+        ...(updateData.notes !== undefined
+          ? { notes: updateData.notes || null }
+          : {}),
+        ...(updateData.defaultHourlyRate !== undefined
+          ? { defaultHourlyRate: updateData.defaultHourlyRate }
+          : {}),
+        ...(updateData.defaultPaymentTerms !== undefined && updateData.defaultPaymentTerms !== null
+          ? { defaultPaymentTerms: updateData.defaultPaymentTerms }
+          : {}),
+      },
     });
-    if (!exists) {
+
+    if (result.count === 0) {
+      const exists = await db.client.findFirst({
+        where: { id: params.id, userId: auth.userId },
+      });
+      if (!exists) {
+        return NextResponse.json(
+          { error: "Client not found" },
+          { status: 404 }
+        );
+      }
       return NextResponse.json(
-        { error: "Client not found" },
-        { status: 404 }
+        {
+          error:
+            "Conflict: this record was modified. Please reload and try again.",
+          current: exists,
+        },
+        { status: 409 }
       );
     }
+
+    const updated = await db.client.findFirst({
+      where: { id: params.id, userId: auth.userId },
+    });
+
+    return NextResponse.json(updated);
+  } catch {
     return NextResponse.json(
       {
         error:
-          "Conflict: this record was modified. Please reload and try again.",
-        current: exists,
+          "Something went wrong on our end. We've been notified and are looking into it.",
       },
-      { status: 409 }
+      { status: 500 }
     );
   }
-
-  const updated = await db.client.findFirst({
-    where: { id: params.id, userId: auth.userId },
-  });
-
-  return NextResponse.json(updated);
 }
 
 /**
@@ -118,20 +147,28 @@ export async function DELETE(
   const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
-  const client = await db.client.findFirst({
-    where: { id: params.id, userId: auth.userId },
-  });
+  try {
+    // Use deleteMany with userId to ensure ownership in a single atomic operation
+    // (avoids TOCTOU race between find and delete)
+    const result = await db.client.deleteMany({
+      where: { id: params.id, userId: auth.userId },
+    });
 
-  if (!client) {
+    if (result.count === 0) {
+      return NextResponse.json(
+        { error: "Client not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch {
     return NextResponse.json(
-      { error: "Client not found" },
-      { status: 404 }
+      {
+        error:
+          "Something went wrong on our end. We've been notified and are looking into it.",
+      },
+      { status: 500 }
     );
   }
-
-  // Delete the client (Prisma cascades handle related records once
-  // Projects and other models are added. For now just delete client.)
-  await db.client.delete({ where: { id: params.id } });
-
-  return NextResponse.json({ success: true }, { status: 200 });
 }

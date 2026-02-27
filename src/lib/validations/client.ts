@@ -5,7 +5,7 @@ export const createClientSchema = z.object({
     .string()
     .trim()
     .min(1, "Client name is required.")
-    .max(200, "Client name must be 200 characters or fewer."),
+    .max(200, "Client name is too long."),
   contactName: z
     .string()
     .trim()
@@ -25,16 +25,28 @@ export const createClientSchema = z.object({
     .max(50, "Phone must be 50 characters or fewer.")
     .optional()
     .or(z.literal("")),
+  address: z
+    .string()
+    .trim()
+    .max(1000, "Address is too long.")
+    .optional()
+    .or(z.literal("")),
+  notes: z
+    .string()
+    .trim()
+    .max(5000, "Notes are too long.")
+    .optional()
+    .or(z.literal("")),
   defaultHourlyRate: z
     .number()
-    .min(0, "Hourly rate must be non-negative.")
+    .min(0, "Hourly rate must be a positive number.")
     .max(99999999.99, "Hourly rate is too large.")
     .optional()
     .nullable(),
   defaultPaymentTerms: z
     .number()
-    .int("Payment terms must be a whole number.")
-    .positive("Payment terms must be positive.")
+    .int("Payment terms must be a whole number of days.")
+    .positive("Payment terms must be a positive number of days.")
     .max(365, "Payment terms cannot exceed 365 days.")
     .optional()
     .nullable(),

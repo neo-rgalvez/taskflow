@@ -91,8 +91,10 @@ model Client {
   contactName         String?  @map("contact_name")
   email               String?
   phone               String?
+  address             String?  @db.Text
+  notes               String?  @db.Text
   defaultHourlyRate   Decimal? @map("default_hourly_rate") @db.Decimal(10, 2)
-  defaultPaymentTerms Int?     @map("default_payment_terms")
+  defaultPaymentTerms Int      @default(30) @map("default_payment_terms")
   isArchived          Boolean  @default(false) @map("is_archived")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
