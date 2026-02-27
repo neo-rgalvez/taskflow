@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "sudo pg_ctlcluster 16 main start 2>/dev/null; next dev",
+    "db:start": "sudo pg_ctlcluster 16 main start",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
