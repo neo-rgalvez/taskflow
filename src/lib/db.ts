@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
-// Ensure DATABASE_URL is set for local development
-if (!process.env.DATABASE_URL) {
+// Fallback for local development only
+if (!process.env.DATABASE_URL && process.env.NODE_ENV !== "production") {
   process.env.DATABASE_URL =
     "postgresql://taskflow:taskflow@localhost:5432/taskflow";
 }
