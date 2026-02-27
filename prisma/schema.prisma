@@ -28,6 +28,7 @@ model User {
   passwordResetTokens       PasswordResetToken[]
   emailVerificationTokens   EmailVerificationToken[]
   clients                   Client[]
+  projects                  Project[]
 
   @@map("users")
 }
@@ -97,8 +98,35 @@ model Client {
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects Project[]
 
   @@index([userId])
   @@map("clients")
+}
+
+// ─── Project ──────────────────────────────────────────────────────────────────
+
+model Project {
+  id                   String    @id @default(cuid())
+  userId               String    @map("user_id")
+  clientId             String    @map("client_id")
+  name                 String
+  description          String?
+  status               String    @default("active") // active, on_hold, completed, cancelled
+  billingType          String    @map("billing_type") // hourly, fixed_price
+  hourlyRate           Decimal?  @map("hourly_rate") @db.Decimal(10, 2)
+  fixedPrice           Decimal?  @map("fixed_price") @db.Decimal(10, 2)
+  budgetHours          Int?      @map("budget_hours")
+  deadline             DateTime?
+  budgetAlertThreshold Decimal   @default(0.80) @map("budget_alert_threshold") @db.Decimal(3, 2)
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clientId])
+  @@map("projects")
 }

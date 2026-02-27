@@ -10,16 +10,30 @@ import {
   FolderKanban,
   Clock,
   FileText,
-  TrendingUp,
   ArrowRight,
   Activity,
 } from "lucide-react";
-import { dashboardStats, recentActivity, projects } from "@/lib/mock-data";
+import { dashboardStats, recentActivity } from "@/lib/mock-data";
 import { formatDate } from "@/lib/format";
 import Link from "next/link";
 
 interface DashboardStats {
   totalClients: number;
+  activeProjects: number;
+}
+
+interface DashboardProject {
+  id: string;
+  name: string;
+  status: string;
+  budgetHours: number | null;
+  deadline: string | null;
+  client: { id: string; name: string };
+}
+
+interface ProjectListResponse {
+  data: DashboardProject[];
+  totalCount: number;
 }
 
 export default function DashboardPage() {
@@ -27,17 +41,24 @@ export default function DashboardPage() {
   const [showEmpty, setShowEmpty] = useState(false);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [activeProjectsList, setActiveProjectsList] = useState<DashboardProject[]>([]);
 
   useEffect(() => {
-    async function fetchStats() {
+    async function fetchDashboard() {
       setStatsLoading(true);
-      const result = await apiFetch<DashboardStats>("/api/dashboard/stats");
-      if (result.data) {
-        setStats(result.data);
+      const [statsResult, projectsResult] = await Promise.all([
+        apiFetch<DashboardStats>("/api/dashboard/stats"),
+        apiFetch<ProjectListResponse>("/api/projects?status=active&limit=5"),
+      ]);
+      if (statsResult.data) {
+        setStats(statsResult.data);
+      }
+      if (projectsResult.data) {
+        setActiveProjectsList(projectsResult.data.data);
       }
       setStatsLoading(false);
     }
-    fetchStats();
+    fetchDashboard();
   }, []);
 
   // Show empty state if no clients
@@ -102,10 +123,8 @@ export default function DashboardPage() {
                     <p className="text-sm text-gray-500">Active Projects</p>
                     <FolderKanban size={20} className="text-gray-400" />
                   </div>
-                  <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{dashboardStats.activeProjects}</p>
-                  <p className="text-sm text-green-600 mt-1 flex items-center gap-1">
-                    <TrendingUp size={14} /> {dashboardStats.activeProjectsTrend}
-                  </p>
+                  <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{stats?.activeProjects ?? 0}</p>
+                  <p className="text-sm text-gray-500 mt-1">Active projects</p>
                 </Link>
 
                 <Link href="/time" className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px] hover:shadow-md hover:border-gray-300 transition-all cursor-pointer">
@@ -145,41 +164,56 @@ export default function DashboardPage() {
                   </Link>
                 </div>
                 <div className="divide-y divide-gray-100">
-                  {projects.filter((p) => p.status === "active").map((project) => {
-                    const budgetPercent = project.budgetHours ? Math.round((project.hoursTracked / project.budgetHours) * 100) : 0;
-                    return (
-                      <Link
-                        key={project.id}
-                        href={`/projects/${project.id}`}
-                        className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="text-sm font-medium text-gray-800 truncate">{project.name}</p>
-                            <StatusBadge status={project.status} />
-                          </div>
-                          <p className="text-xs text-gray-500">{project.clientName}</p>
-                          <div className="mt-2 flex items-center gap-3">
-                            <div className="flex-1 max-w-[200px]">
-                              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full transition-all ${
-                                    budgetPercent >= 100 ? "bg-red-500" : budgetPercent >= 80 ? "bg-amber-500" : "bg-primary-500"
-                                  }`}
-                                  style={{ width: `${Math.min(budgetPercent, 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                            <span className="text-xs text-gray-500 font-mono">{budgetPercent}%</span>
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-xs text-gray-500">Due {formatDate(project.deadline)}</p>
-                          <p className="text-xs text-gray-400 mt-1">{project.taskCount} tasks</p>
-                        </div>
+                  {activeProjectsList.length === 0 ? (
+                    <div className="px-5 py-8 text-center text-sm text-gray-500">
+                      No active projects yet.{" "}
+                      <Link href="/projects" className="text-primary-500 hover:text-primary-700">
+                        Create one
                       </Link>
-                    );
-                  })}
+                    </div>
+                  ) : (
+                    activeProjectsList.map((project) => {
+                      const budgetPercent = project.budgetHours
+                        ? Math.round((0 / project.budgetHours) * 100)
+                        : 0;
+                      return (
+                        <Link
+                          key={project.id}
+                          href={`/projects/${project.id}`}
+                          className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="text-sm font-medium text-gray-800 truncate">{project.name}</p>
+                              <StatusBadge status={project.status} />
+                            </div>
+                            <p className="text-xs text-gray-500">{project.client.name}</p>
+                            {project.budgetHours && (
+                              <div className="mt-2 flex items-center gap-3">
+                                <div className="flex-1 max-w-[200px]">
+                                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all ${
+                                        budgetPercent >= 100 ? "bg-red-500" : budgetPercent >= 80 ? "bg-amber-500" : "bg-primary-500"
+                                      }`}
+                                      style={{ width: `${Math.min(budgetPercent, 100)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                                <span className="text-xs text-gray-500 font-mono">{budgetPercent}%</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            {project.deadline && (
+                              <p className="text-xs text-gray-500">Due {formatDate(project.deadline.split("T")[0])}</p>
+                            )}
+                            <p className="text-xs text-gray-400 mt-1">0 tasks</p>
+                          </div>
+                        </Link>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
