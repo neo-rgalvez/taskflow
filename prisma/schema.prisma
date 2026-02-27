@@ -1,6 +1,6 @@
 // TaskFlow — Prisma Schema
 // Phase A: Foundation (User, Session, PasswordResetToken, EmailVerificationToken)
-// Phase B: Core Data (Client)
+// Phase B: Core Data (Client, Project, Task, Subtask, TimeEntry, Comment)
 
 generator client {
   provider = "prisma-client-js"
@@ -30,6 +30,9 @@ model User {
   emailVerificationTokens   EmailVerificationToken[]
   clients                   Client[]
   projects                  Project[]
+  tasks                     Task[]
+  timeEntries               TimeEntry[]
+  comments                  Comment[]
 
   @@map("users")
 }
@@ -126,10 +129,99 @@ model Project {
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+  timeEntries TimeEntry[]
 
   @@index([userId])
   @@index([clientId])
   @@map("projects")
+}
+
+// ─── Task ──────────────────────────────────────────────────────────────────────
+
+model Task {
+  id          String    @id @default(cuid())
+  projectId   String    @map("project_id")
+  userId      String    @map("user_id")
+  title       String    @db.VarChar(500)
+  description String?   @db.Text
+  status      String    @default("todo") // todo, in_progress, waiting_on_client, review, done
+  priority    String    @default("medium") // low, medium, high, urgent
+  dueDate     DateTime? @map("due_date")
+  position    Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subtasks    Subtask[]
+  timeEntries TimeEntry[]
+  comments    Comment[]
+
+  @@index([projectId, status])
+  @@index([userId])
+  @@map("tasks")
+}
+
+// ─── Subtask ───────────────────────────────────────────────────────────────────
+
+model Subtask {
+  id          String   @id @default(cuid())
+  taskId      String   @map("task_id")
+  title       String   @db.VarChar(500)
+  isCompleted Boolean  @default(false) @map("is_completed")
+  position    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("subtasks")
+}
+
+// ─── Time Entry ────────────────────────────────────────────────────────────────
+
+model TimeEntry {
+  id              String   @id @default(cuid())
+  projectId       String   @map("project_id")
+  taskId          String?  @map("task_id")
+  userId          String   @map("user_id")
+  description     String?  @db.Text
+  startTime       DateTime @map("start_time")
+  endTime         DateTime? @map("end_time")
+  durationMinutes Int      @map("duration_minutes")
+  isBillable      Boolean  @default(true) @map("is_billable")
+  isInvoiced      Boolean  @default(false) @map("is_invoiced")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task    Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([taskId])
+  @@index([userId, startTime])
+  @@index([projectId, isBillable, isInvoiced])
+  @@map("time_entries")
+}
+
+// ─── Comment ───────────────────────────────────────────────────────────────────
+
+model Comment {
+  id        String   @id @default(cuid())
+  taskId    String   @map("task_id")
+  userId    String   @map("user_id")
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("comments")
 }
