@@ -10,7 +10,8 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [serverError, setServerError] = useState("");
 
   const passwordChecks = {
     length: password.length >= 8,
@@ -31,11 +32,32 @@ export default function SignupPage() {
     return errs;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setServerError("");
     const errs = validate();
     setErrors(errs);
-    setSubmitted(true);
+    if (Object.keys(errs).length > 0) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setServerError(data.error || "Registration failed.");
+        return;
+      }
+      // Full page load so middleware sees the new session cookie
+      window.location.href = "/dashboard";
+    } catch {
+      setServerError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -134,22 +156,20 @@ export default function SignupPage() {
               )}
             </div>
 
+            {serverError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-sm text-red-700">{serverError}</p>
+              </div>
+            )}
+
             <button
               type="submit"
-              className="w-full h-10 bg-primary-500 text-white font-medium rounded-md hover:bg-primary-600 active:bg-primary-700 transition-colors"
+              disabled={loading}
+              className="w-full h-10 bg-primary-500 text-white font-medium rounded-md hover:bg-primary-600 active:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Create account
+              {loading ? "Creating account..." : "Create account"}
             </button>
           </form>
-
-          {submitted && Object.keys(errors).length === 0 && (
-            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-              <p className="text-sm text-green-700">Demo: Account created!</p>
-              <Link href="/dashboard" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-green-700 hover:text-green-800">
-                Go to Dashboard <span aria-hidden="true">&rarr;</span>
-              </Link>
-            </div>
-          )}
 
           <p className="mt-4 text-xs text-gray-400 text-center">
             By creating an account, you agree to our Terms of Service and Privacy Policy.
