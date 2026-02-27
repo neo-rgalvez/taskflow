@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Check, X } from "lucide-react";
 
 export default function SignupPage() {
-  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -53,7 +51,8 @@ export default function SignupPage() {
         setServerError(data.error || "Registration failed.");
         return;
       }
-      router.push("/dashboard");
+      // Full page load so middleware sees the new session cookie
+      window.location.href = "/dashboard";
     } catch {
       setServerError("Network error. Please try again.");
     } finally {
