@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { calendarEvents } from "@/lib/mock-data";
+import { apiFetch } from "@/lib/api";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -20,15 +20,98 @@ function getFirstDayOfMonth(year: number, month: number) {
   return new Date(year, month, 1).getDay();
 }
 
+interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string;
+  type: "deadline" | "task" | "project";
+  color: string;
+}
+
+interface TaskItem {
+  id: string;
+  title: string;
+  dueDate: string | null;
+  priority: string;
+  project: { id: string; name: string } | null;
+}
+
+interface ProjectItem {
+  id: string;
+  name: string;
+  deadline: string | null;
+  status: string;
+}
+
 export default function CalendarPage() {
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(1); // February = 1 (0-indexed)
-  const [showSkeleton, setShowSkeleton] = useState(false);
-  const [showEmpty, setShowEmpty] = useState(false);
+  const now = new Date();
+  const [currentYear, setCurrentYear] = useState(now.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(now.getMonth());
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
   const firstDay = getFirstDayOfMonth(currentYear, currentMonth);
-  const today = new Date(2026, 1, 25); // Feb 25, 2026
+
+  const fetchCalendarData = useCallback(async () => {
+    setLoading(true);
+
+    const monthStart = new Date(currentYear, currentMonth, 1);
+    const monthEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+
+    const [tasksResult, projectsResult] = await Promise.all([
+      apiFetch<{ data: TaskItem[] }>(
+        `/api/tasks?dueAfter=${monthStart.toISOString()}&dueBefore=${monthEnd.toISOString()}&limit=100`
+      ),
+      apiFetch<{ data: ProjectItem[] }>(
+        `/api/projects?limit=100`
+      ),
+    ]);
+
+    const calEvents: CalendarEvent[] = [];
+
+    // Add task due dates
+    if (tasksResult.data) {
+      for (const task of tasksResult.data.data) {
+        if (task.dueDate) {
+          const dateStr = task.dueDate.split("T")[0];
+          calEvents.push({
+            id: `task-${task.id}`,
+            title: task.title,
+            date: dateStr,
+            type: "task",
+            color: task.priority === "urgent" ? "#DC2626" : task.priority === "high" ? "#F97316" : "#6366F1",
+          });
+        }
+      }
+    }
+
+    // Add project deadlines
+    if (projectsResult.data) {
+      for (const project of projectsResult.data.data) {
+        if (project.deadline) {
+          const dateStr = project.deadline.split("T")[0];
+          const deadlineDate = new Date(dateStr);
+          if (deadlineDate >= monthStart && deadlineDate <= monthEnd) {
+            calEvents.push({
+              id: `project-${project.id}`,
+              title: `${project.name} deadline`,
+              date: dateStr,
+              type: "project",
+              color: "#6366F1",
+            });
+          }
+        }
+      }
+    }
+
+    setEvents(calEvents);
+    setLoading(false);
+  }, [currentYear, currentMonth]);
+
+  useEffect(() => {
+    fetchCalendarData();
+  }, [fetchCalendarData]);
 
   const goToPrevMonth = () => {
     if (currentMonth === 0) {
@@ -50,45 +133,33 @@ export default function CalendarPage() {
 
   const getEventsForDay = (day: number) => {
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return calendarEvents.filter((e) => e.date === dateStr);
+    return events.filter((e) => e.date === dateStr);
   };
 
   const isToday = (day: number) => {
     return (
-      today.getFullYear() === currentYear &&
-      today.getMonth() === currentMonth &&
-      today.getDate() === day
+      now.getFullYear() === currentYear &&
+      now.getMonth() === currentMonth &&
+      now.getDate() === day
     );
   };
+
+  const isEmpty = !loading && events.length === 0;
 
   return (
     <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Calendar</h1>
-          <p className="text-sm text-gray-500 mt-1">Deadlines, invoices, and milestones</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => { setShowSkeleton(!showSkeleton); setShowEmpty(false); }}
-            className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 rounded-md hover:bg-gray-200"
-          >
-            {showSkeleton ? "Show Data" : "Skeleton"}
-          </button>
-          <button
-            onClick={() => { setShowEmpty(!showEmpty); setShowSkeleton(false); }}
-            className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 rounded-md hover:bg-gray-200"
-          >
-            {showEmpty ? "Show Data" : "Empty"}
-          </button>
+          <p className="text-sm text-gray-500 mt-1">Deadlines, tasks, and milestones</p>
         </div>
       </div>
 
-      {showEmpty ? (
+      {isEmpty ? (
         <EmptyState
           icon="time"
           headline="No events on the calendar"
-          description="Your project deadlines and invoice due dates will appear here automatically."
+          description="Your task due dates and project deadlines will appear here automatically."
           ctaLabel="View Projects"
           ctaHref="/projects"
         />
@@ -113,7 +184,7 @@ export default function CalendarPage() {
             </button>
           </div>
 
-          {showSkeleton ? (
+          {loading ? (
             <div className="p-5">
               <div className="grid grid-cols-7 gap-2">
                 {DAYS.map((d) => (
@@ -145,7 +216,7 @@ export default function CalendarPage() {
                 {/* Day cells */}
                 {Array.from({ length: daysInMonth }).map((_, i) => {
                   const day = i + 1;
-                  const events = getEventsForDay(day);
+                  const dayEvents = getEventsForDay(day);
                   const todayCell = isToday(day);
 
                   return (
@@ -165,20 +236,20 @@ export default function CalendarPage() {
                         {day}
                       </span>
                       <div className="mt-1 space-y-0.5">
-                        {events.slice(0, 2).map((event) => (
+                        {dayEvents.slice(0, 2).map((event) => (
                           <div
                             key={event.id}
                             className="text-[10px] sm:text-xs px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80"
                             style={{
-                              backgroundColor: event.type === "invoice" ? "#FEF2F2" : `${event.color}15`,
-                              color: event.type === "invoice" ? "#DC2626" : event.color,
+                              backgroundColor: `${event.color}15`,
+                              color: event.color,
                             }}
                           >
                             {event.title}
                           </div>
                         ))}
-                        {events.length > 2 && (
-                          <p className="text-[10px] text-gray-400 pl-1">+{events.length - 2} more</p>
+                        {dayEvents.length > 2 && (
+                          <p className="text-[10px] text-gray-400 pl-1">+{dayEvents.length - 2} more</p>
                         )}
                       </div>
                     </div>
@@ -197,15 +268,15 @@ export default function CalendarPage() {
           <div className="flex items-center gap-4 px-5 py-3 border-t border-gray-200 text-xs text-gray-500">
             <div className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-full bg-primary-500" />
-              Deadline
+              Project Deadline
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-              Invoice Due
+              Urgent Task
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-              Meeting
+              <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+              High Priority
             </div>
           </div>
         </div>

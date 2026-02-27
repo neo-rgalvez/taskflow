@@ -25,17 +25,30 @@ export async function GET(
       );
     }
 
-    // TODO: When Project and Invoice models are added, replace with real counts:
-    // const [activeProjects, draftInvoices, outstandingAmount] = await Promise.all([
-    //   db.project.count({ where: { clientId: params.id, status: 'active' } }),
-    //   db.invoice.count({ where: { clientId: params.id, status: 'draft' } }),
-    //   db.invoice.aggregate({ where: { clientId: params.id, balanceDue: { gt: 0 } }, _sum: { balanceDue: true } }),
-    // ]);
+    const [activeProjectCount, totalProjects, totalHoursResult] = await Promise.all([
+      db.project.count({
+        where: { clientId: params.id, userId: auth.userId, status: "active" },
+      }),
+      db.project.count({
+        where: { clientId: params.id, userId: auth.userId },
+      }),
+      db.timeEntry.aggregate({
+        where: {
+          userId: auth.userId,
+          project: { clientId: params.id },
+        },
+        _sum: { durationMinutes: true },
+      }),
+    ]);
+
+    const totalMinutes = totalHoursResult._sum.durationMinutes || 0;
 
     return NextResponse.json({
-      activeProjectCount: 0,
+      activeProjectCount,
+      totalProjects,
       draftInvoiceCount: 0,
       outstandingInvoiceAmount: 0,
+      totalMinutes,
     });
   } catch {
     return NextResponse.json(

@@ -591,10 +591,10 @@ function DangerZoneTab({ onDeleted }: { onDeleted: () => void }) {
     setLoadingCounts(true);
     // Gather counts client-side from existing endpoints
     const [clients, projects, tasks, timeEntries] = await Promise.all([
-      apiFetch<{ totalCount: number }>("/api/clients?limit=0"),
-      apiFetch<{ totalCount: number }>("/api/projects?limit=0"),
-      apiFetch<{ totalCount: number }>("/api/tasks?limit=0"),
-      apiFetch<{ totalCount: number }>("/api/time?limit=0"),
+      apiFetch<{ totalCount: number }>("/api/clients?limit=1"),
+      apiFetch<{ totalCount: number }>("/api/projects?limit=1"),
+      apiFetch<{ totalCount: number }>("/api/tasks?limit=1"),
+      apiFetch<{ totalCount: number }>("/api/time-entries?limit=1"),
     ]);
     setCascadeCounts({
       clients: clients.data?.totalCount ?? 0,

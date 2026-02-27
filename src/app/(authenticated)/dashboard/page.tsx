@@ -9,17 +9,21 @@ import {
   Users,
   FolderKanban,
   Clock,
-  FileText,
+  CalendarDays,
   ArrowRight,
   Activity,
+  Building,
 } from "lucide-react";
-import { dashboardStats, recentActivity } from "@/lib/mock-data";
 import { formatDate } from "@/lib/format";
 import Link from "next/link";
 
 interface DashboardStats {
   totalClients: number;
   activeProjects: number;
+  hoursThisWeek: number;
+  billableHours: number;
+  totalTasks: number;
+  upcomingDeadlines: number;
 }
 
 interface DashboardProject {
@@ -29,11 +33,20 @@ interface DashboardProject {
   budgetHours: number | null;
   deadline: string | null;
   client: { id: string; name: string };
+  _count?: { tasks: number };
 }
 
 interface ProjectListResponse {
   data: DashboardProject[];
   totalCount: number;
+}
+
+interface RecentTaskActivity {
+  id: string;
+  title: string;
+  status: string;
+  updatedAt: string;
+  project: { id: string; name: string; client: { id: string; name: string } } | null;
 }
 
 export default function DashboardPage() {
@@ -42,19 +55,24 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [activeProjectsList, setActiveProjectsList] = useState<DashboardProject[]>([]);
+  const [recentTasks, setRecentTasks] = useState<RecentTaskActivity[]>([]);
 
   useEffect(() => {
     async function fetchDashboard() {
       setStatsLoading(true);
-      const [statsResult, projectsResult] = await Promise.all([
+      const [statsResult, projectsResult, recentResult] = await Promise.all([
         apiFetch<DashboardStats>("/api/dashboard/stats"),
         apiFetch<ProjectListResponse>("/api/projects?status=active&limit=5"),
+        apiFetch<{ data: RecentTaskActivity[] }>("/api/tasks?limit=5&sort=createdAt&order=desc"),
       ]);
       if (statsResult.data) {
         setStats(statsResult.data);
       }
       if (projectsResult.data) {
         setActiveProjectsList(projectsResult.data.data);
+      }
+      if (recentResult.data) {
+        setRecentTasks(recentResult.data.data);
       }
       setStatsLoading(false);
     }
@@ -69,7 +87,7 @@ export default function DashboardPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Good morning, Sarah</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">Here&apos;s what&apos;s happening across your projects today.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -89,13 +107,28 @@ export default function DashboardPage() {
       </div>
 
       {showEmpty || isEmpty ? (
-        <EmptyState
-          icon="projects"
-          headline="Welcome to TaskFlow"
-          description="Add your first client to get started. You'll be tracking time and sending invoices in no time."
-          ctaLabel="+ Add Your First Client"
-          ctaHref="/clients"
-        />
+        <div className="space-y-6">
+          <EmptyState
+            icon="projects"
+            headline="Welcome to TaskFlow"
+            description="Add your first client to get started. You'll be tracking time and sending invoices in no time."
+            ctaLabel="+ Add Your First Client"
+            ctaHref="/clients"
+          />
+          <div className="bg-primary-50 border border-primary-200 rounded-lg p-4 flex items-center gap-3">
+            <Building size={20} className="text-primary-500 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-primary-800">Set up your business profile</p>
+              <p className="text-xs text-primary-600 mt-0.5">Add your business details so they appear on invoices.</p>
+            </div>
+            <Link
+              href="/settings?tab=business"
+              className="text-sm font-medium text-primary-600 hover:text-primary-800 whitespace-nowrap"
+            >
+              Set up →
+            </Link>
+          </div>
+        </div>
       ) : (
         <>
           {/* Stat Cards */}
@@ -124,7 +157,7 @@ export default function DashboardPage() {
                     <FolderKanban size={20} className="text-gray-400" />
                   </div>
                   <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{stats?.activeProjects ?? 0}</p>
-                  <p className="text-sm text-gray-500 mt-1">Active projects</p>
+                  <p className="text-sm text-gray-500 mt-1">{stats?.totalTasks ?? 0} total tasks</p>
                 </Link>
 
                 <Link href="/time" className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px] hover:shadow-md hover:border-gray-300 transition-all cursor-pointer">
@@ -132,21 +165,21 @@ export default function DashboardPage() {
                     <p className="text-sm text-gray-500">Hours This Week</p>
                     <Clock size={20} className="text-gray-400" />
                   </div>
-                  <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{dashboardStats.hoursThisWeek}<span className="text-lg">h</span></p>
+                  <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{stats?.hoursThisWeek ?? 0}<span className="text-lg">h</span></p>
                   <p className="text-xs text-gray-500 mt-1">
-                    <span className="text-green-600 font-medium">{dashboardStats.billableHours}h billable</span>
+                    <span className="text-green-600 font-medium">{stats?.billableHours ?? 0}h billable</span>
                     {" / "}
-                    <span>{(dashboardStats.hoursThisWeek - dashboardStats.billableHours).toFixed(1)}h non-billable</span>
+                    <span>{((stats?.hoursThisWeek ?? 0) - (stats?.billableHours ?? 0)).toFixed(1)}h non-billable</span>
                   </p>
                 </Link>
 
-                <Link href="/invoices" className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px] hover:shadow-md hover:border-gray-300 transition-all cursor-pointer">
+                <Link href="/calendar" className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px] hover:shadow-md hover:border-gray-300 transition-all cursor-pointer">
                   <div className="flex justify-between items-start">
-                    <p className="text-sm text-gray-500">Outstanding Invoices</p>
-                    <FileText size={20} className="text-gray-400" />
+                    <p className="text-sm text-gray-500">Upcoming Deadlines</p>
+                    <CalendarDays size={20} className="text-gray-400" />
                   </div>
-                  <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{dashboardStats.outstandingInvoices}</p>
-                  <p className="text-sm text-red-600 mt-1">{dashboardStats.invoiceTrend}</p>
+                  <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{stats?.upcomingDeadlines ?? 0}</p>
+                  <p className="text-sm text-gray-500 mt-1">Due in next 7 days</p>
                 </Link>
               </>
             )}
@@ -172,47 +205,26 @@ export default function DashboardPage() {
                       </Link>
                     </div>
                   ) : (
-                    activeProjectsList.map((project) => {
-                      const budgetPercent = project.budgetHours
-                        ? Math.round((0 / project.budgetHours) * 100)
-                        : 0;
-                      return (
-                        <Link
-                          key={project.id}
-                          href={`/projects/${project.id}`}
-                          className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="text-sm font-medium text-gray-800 truncate">{project.name}</p>
-                              <StatusBadge status={project.status} />
-                            </div>
-                            <p className="text-xs text-gray-500">{project.client.name}</p>
-                            {project.budgetHours && (
-                              <div className="mt-2 flex items-center gap-3">
-                                <div className="flex-1 max-w-[200px]">
-                                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                    <div
-                                      className={`h-full rounded-full transition-all ${
-                                        budgetPercent >= 100 ? "bg-red-500" : budgetPercent >= 80 ? "bg-amber-500" : "bg-primary-500"
-                                      }`}
-                                      style={{ width: `${Math.min(budgetPercent, 100)}%` }}
-                                    />
-                                  </div>
-                                </div>
-                                <span className="text-xs text-gray-500 font-mono">{budgetPercent}%</span>
-                              </div>
-                            )}
+                    activeProjectsList.map((project) => (
+                      <Link
+                        key={project.id}
+                        href={`/projects/${project.id}`}
+                        className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm font-medium text-gray-800 truncate">{project.name}</p>
+                            <StatusBadge status={project.status} />
                           </div>
-                          <div className="text-right flex-shrink-0">
-                            {project.deadline && (
-                              <p className="text-xs text-gray-500">Due {formatDate(project.deadline.split("T")[0])}</p>
-                            )}
-                            <p className="text-xs text-gray-400 mt-1">0 tasks</p>
-                          </div>
-                        </Link>
-                      );
-                    })
+                          <p className="text-xs text-gray-500">{project.client.name}</p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          {project.deadline && (
+                            <p className="text-xs text-gray-500">Due {formatDate(project.deadline.split("T")[0])}</p>
+                          )}
+                        </div>
+                      </Link>
+                    ))
                   )}
                 </div>
               </div>
@@ -226,13 +238,21 @@ export default function DashboardPage() {
                   <Activity size={18} className="text-gray-400" />
                 </div>
                 <div className="divide-y divide-gray-100">
-                  {recentActivity.map((activity) => (
-                    <div key={activity.id} className="px-5 py-3">
-                      <p className="text-sm text-gray-700">{activity.action}</p>
-                      <p className="text-xs text-gray-500 mt-0.5 truncate">{activity.detail}</p>
-                      <p className="text-xs text-gray-400 mt-1">{activity.time}</p>
+                  {recentTasks.length === 0 ? (
+                    <div className="px-5 py-8 text-center text-sm text-gray-500">
+                      No recent activity yet.
                     </div>
-                  ))}
+                  ) : (
+                    recentTasks.map((task) => (
+                      <div key={task.id} className="px-5 py-3">
+                        <p className="text-sm text-gray-700">Task &ldquo;{task.title}&rdquo; updated</p>
+                        <p className="text-xs text-gray-500 mt-0.5 truncate">
+                          {task.project?.name ?? "Unknown project"} · <StatusBadge status={task.status} />
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">{formatDate(task.updatedAt.split("T")[0])}</p>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
