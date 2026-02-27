@@ -75,9 +75,16 @@ export async function POST(req: NextRequest) {
     });
 
     return response;
-  } catch {
+  } catch (err) {
+    console.error("Login error:", err);
     return NextResponse.json(
-      { error: "An unexpected error occurred." },
+      {
+        error: "An unexpected error occurred.",
+        detail:
+          process.env.NODE_ENV === "development" && err instanceof Error
+            ? err.message
+            : undefined,
+      },
       { status: 500 }
     );
   }
