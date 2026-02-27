@@ -15,10 +15,14 @@ export async function apiFetch<T>(
       ...options,
     });
 
-    // Handle 401 — redirect to login
+    // Handle 401 — redirect to login via full page load
     if (res.status === 401) {
-      window.location.href = "/login";
-      return { error: "Unauthorized", status: 401 };
+      // Only redirect if not already on the login page (avoid loops)
+      if (window.location.pathname !== "/login") {
+        const returnUrl = encodeURIComponent(window.location.pathname);
+        window.location.href = `/login?returnUrl=${returnUrl}`;
+      }
+      return { error: "Session expired. Please log in again.", status: 401 };
     }
 
     const json = await res.json().catch(() => null);

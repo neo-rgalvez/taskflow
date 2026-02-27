@@ -20,49 +20,49 @@ export async function getSession(
 ): Promise<AuthSession | null> {
   const sessionToken = req.cookies.get("session_token")?.value;
 
-  if (!sessionToken) {
-    // Development fallback: use first user in DB when no session cookie present
-    if (process.env.NODE_ENV === "development") {
-      const devUser = await db.user.findFirst();
-      if (devUser) {
-        return { userId: devUser.id, sessionId: "dev-session" };
+  if (sessionToken) {
+    const tokenHash = hashToken(sessionToken);
+    const session = await db.session.findUnique({
+      where: { tokenHash },
+      select: { id: true, userId: true, expiresAt: true, lastActiveAt: true },
+    });
+
+    if (session) {
+      // Check absolute expiry
+      if (session.expiresAt < new Date()) {
+        await db.session.delete({ where: { id: session.id } }).catch(() => {});
+      } else {
+        // Check idle timeout (7 days)
+        const idleLimit = new Date(
+          session.lastActiveAt.getTime() + 7 * 24 * 60 * 60 * 1000
+        );
+        if (idleLimit < new Date()) {
+          await db.session
+            .delete({ where: { id: session.id } })
+            .catch(() => {});
+        } else {
+          // Valid session — touch last_active_at
+          await db.session
+            .update({
+              where: { id: session.id },
+              data: { lastActiveAt: new Date() },
+            })
+            .catch(() => {});
+          return { userId: session.userId, sessionId: session.id };
+        }
       }
     }
-    return null;
   }
 
-  const tokenHash = hashToken(sessionToken);
-  const session = await db.session.findUnique({
-    where: { tokenHash },
-    select: { id: true, userId: true, expiresAt: true, lastActiveAt: true },
-  });
-
-  if (!session) return null;
-
-  // Check absolute expiry
-  if (session.expiresAt < new Date()) {
-    await db.session.delete({ where: { id: session.id } }).catch(() => {});
-    return null;
+  // No valid session found — development fallback
+  if (process.env.NODE_ENV === "development") {
+    const devUser = await db.user.findFirst();
+    if (devUser) {
+      return { userId: devUser.id, sessionId: "dev-session" };
+    }
   }
 
-  // Check idle timeout (7 days)
-  const idleLimit = new Date(
-    session.lastActiveAt.getTime() + 7 * 24 * 60 * 60 * 1000
-  );
-  if (idleLimit < new Date()) {
-    await db.session.delete({ where: { id: session.id } }).catch(() => {});
-    return null;
-  }
-
-  // Touch last_active_at
-  await db.session
-    .update({
-      where: { id: session.id },
-      data: { lastActiveAt: new Date() },
-    })
-    .catch(() => {});
-
-  return { userId: session.userId, sessionId: session.id };
+  return null;
 }
 
 /**
