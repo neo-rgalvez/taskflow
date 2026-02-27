@@ -2,11 +2,10 @@
 
 import { Suspense, useState, useRef } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get("returnUrl") || "/dashboard";
   const [email, setEmail] = useState("");
@@ -52,8 +51,8 @@ function LoginForm() {
         return;
       }
 
-      // Successful login — redirect to intended page
-      router.push(returnUrl);
+      // Successful login — full page load to ensure cookie context is fresh
+      window.location.href = returnUrl;
     } catch {
       setServerError("Network error. Please check your connection.");
     } finally {

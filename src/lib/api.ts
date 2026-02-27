@@ -15,12 +15,14 @@ export async function apiFetch<T>(
       ...options,
     });
 
-    // Handle 401 — redirect to login (full page load to trigger middleware)
+    // Handle 401 — redirect to login via full page load
     if (res.status === 401) {
-      const currentPath = window.location.pathname;
-      const loginUrl = `/login${currentPath !== "/login" ? `?returnUrl=${encodeURIComponent(currentPath)}` : ""}`;
-      window.location.replace(loginUrl);
-      return { error: "Unauthorized", status: 401 };
+      // Only redirect if not already on the login page (avoid loops)
+      if (window.location.pathname !== "/login") {
+        const returnUrl = encodeURIComponent(window.location.pathname);
+        window.location.href = `/login?returnUrl=${returnUrl}`;
+      }
+      return { error: "Session expired. Please log in again.", status: 401 };
     }
 
     const json = await res.json().catch(() => null);
