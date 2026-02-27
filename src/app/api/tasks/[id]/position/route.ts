@@ -65,5 +65,16 @@ export async function PATCH(
     },
   });
 
-  return NextResponse.json(updated);
+  // Compute total time so board cards show correct duration
+  const timeAgg = await db.timeEntry.aggregate({
+    where: { taskId: params.id },
+    _sum: { durationMinutes: true },
+  });
+
+  return NextResponse.json({
+    ...updated,
+    totalMinutes: timeAgg._sum.durationMinutes || 0,
+    commentCount: updated?._count.comments || 0,
+    timeEntryCount: updated?._count.timeEntries || 0,
+  });
 }

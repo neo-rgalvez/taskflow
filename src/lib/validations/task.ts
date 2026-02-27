@@ -89,10 +89,11 @@ export const createTimeEntrySchema = z
       .optional()
       .or(z.literal("")),
     durationMinutes: z
-      .number()
+      .number({ message: "Duration must be a number." })
       .int("Duration must be a whole number.")
-      .min(1, "Duration must be at least 1 minute.")
-      .max(1440, "Duration cannot exceed 24 hours."),
+      .min(1, "Duration must be between 1 minute and 24 hours.")
+      .max(1440, "Duration must be between 1 minute and 24 hours.")
+      .refine((n) => Number.isFinite(n), "Duration must be a finite number."),
     isBillable: z.boolean().default(true),
   });
 

@@ -137,7 +137,9 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/tasks/[id] — Delete a task (cascades subtasks, comments; orphans time entries)
+ * DELETE /api/tasks/[id] — Delete a task
+ * Cascades: subtasks, comments deleted.
+ * Time entries preserved (task_id set to null via onDelete: SetNull).
  */
 export async function DELETE(
   req: NextRequest,
@@ -148,14 +150,20 @@ export async function DELETE(
 
   const task = await db.task.findFirst({
     where: { id: params.id, userId: auth.userId },
+    include: {
+      _count: { select: { timeEntries: true } },
+    },
   });
 
   if (!task) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
   }
 
-  // Time entries will have taskId set to null via onDelete: SetNull
+  // Time entries will have taskId set to null via onDelete: SetNull (preserved, not deleted)
   await db.task.delete({ where: { id: params.id } });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({
+    success: true,
+    orphanedTimeEntries: task._count.timeEntries,
+  });
 }

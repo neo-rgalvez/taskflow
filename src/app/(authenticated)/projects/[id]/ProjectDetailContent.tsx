@@ -606,6 +606,9 @@ function TaskDetailSlideOver({
     setLoading(false);
   }, [taskId, toast, onClose]);
 
+  // Track the pending save payload so we can flush it on close
+  const pendingSaveRef = useRef<{ field: string; value: unknown } | null>(null);
+
   useEffect(() => {
     fetchTaskDetail();
     return () => {
@@ -613,16 +616,41 @@ function TaskDetailSlideOver({
     };
   }, [fetchTaskDetail]);
 
+  // ─── Flush pending auto-save immediately (called on close) ─────────────────
+
+  const flushPendingSave = useCallback(async () => {
+    if (!pendingSaveRef.current || !latestTaskRef.current) return;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+
+    const { field, value } = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+
+    const body: Record<string, unknown> = {
+      [field]: value,
+      updatedAt: latestTaskRef.current.updatedAt,
+    };
+
+    await apiFetch(`/api/tasks/${latestTaskRef.current.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  }, []);
+
   // ─── Auto-save helper ──────────────────────────────────────────────────────
 
   const autoSave = useCallback(
     (field: string, value: unknown) => {
       if (!task) return;
 
-      // Clear pending save
+      // Track pending save for flush-on-close
+      pendingSaveRef.current = { field, value };
+
+      // Clear pending save timer
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
       saveTimeoutRef.current = setTimeout(async () => {
+        pendingSaveRef.current = null;
+
         const body: Record<string, unknown> = {
           [field]: value,
           updatedAt: latestTaskRef.current?.updatedAt || task.updatedAt,
@@ -654,7 +682,13 @@ function TaskDetailSlideOver({
 
   const handleFieldChange = (field: string, value: unknown) => {
     if (!task) return;
+    // Always update local state for responsive UI
     setTask((prev) => prev ? { ...prev, [field]: value } : prev);
+
+    // Validate title is not empty before saving
+    if (field === "title" && !(value as string).trim()) {
+      return; // Don't auto-save empty title
+    }
 
     // For date fields, convert to ISO
     if (field === "dueDate") {
@@ -665,11 +699,28 @@ function TaskDetailSlideOver({
     }
   };
 
+  // ─── Close with flush ────────────────────────────────────────────────────
+
+  const handleClose = useCallback(() => {
+    flushPendingSave();
+    onClose();
+  }, [flushPendingSave, onClose]);
+
   // ─── Delete ────────────────────────────────────────────────────────────────
 
   const handleDelete = async () => {
     if (!task || deleting) return;
-    if (!window.confirm("Delete this task? This cannot be undone.")) return;
+
+    // Build warning message per QA-CHECKLIST §13.3
+    let message = "Delete this task? This cannot be undone.";
+    if (task.totalMinutes > 0) {
+      message = `This task has ${formatDuration(task.totalMinutes)} of tracked time. Time entries will be preserved but unlinked from this task. Delete anyway?`;
+    }
+    if (!window.confirm(message)) return;
+
+    // Cancel any pending auto-save
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    pendingSaveRef.current = null;
 
     setDeleting(true);
     const res = await apiFetch(`/api/tasks/${task.id}`, { method: "DELETE" });
@@ -733,7 +784,7 @@ function TaskDetailSlideOver({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/50" onClick={handleClose} />
       <div className="relative bg-white w-full max-w-md sm:max-w-lg shadow-xl animate-slide-in-right flex flex-col h-full">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
@@ -747,7 +798,7 @@ function TaskDetailSlideOver({
             >
               {deleting ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
             </button>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
               <X size={20} />
             </button>
           </div>
@@ -888,7 +939,7 @@ function TaskDetailSlideOver({
                 Changes saved automatically
               </div>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
               >
                 Close
@@ -1021,6 +1072,12 @@ function TimeEntrySection({
   const handleLog = async () => {
     const h = parseInt(hours || "0", 10);
     const m = parseInt(minutes || "0", 10);
+
+    if (isNaN(h) || isNaN(m) || h < 0 || m < 0) {
+      toast("error", "Please enter valid hours and minutes.");
+      return;
+    }
+
     const total = h * 60 + m;
 
     if (total < 1 || total > 1440) {
