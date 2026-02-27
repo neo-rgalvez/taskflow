@@ -36,25 +36,35 @@ export async function GET(req: NextRequest) {
       : {}),
   };
 
-  const [clients, totalCount] = await Promise.all([
-    db.client.findMany({
-      where,
-      orderBy: { name: "asc" },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    }),
-    db.client.count({ where }),
-  ]);
+  try {
+    const [clients, totalCount] = await Promise.all([
+      db.client.findMany({
+        where,
+        orderBy: { name: "asc" },
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      }),
+      db.client.count({ where }),
+    ]);
 
-  const hasMore = clients.length > limit;
-  if (hasMore) clients.pop();
+    const hasMore = clients.length > limit;
+    if (hasMore) clients.pop();
 
-  return NextResponse.json({
-    data: clients,
-    nextCursor: hasMore ? clients[clients.length - 1]?.id : null,
-    hasMore,
-    totalCount,
-  });
+    return NextResponse.json({
+      data: clients,
+      nextCursor: hasMore ? clients[clients.length - 1]?.id : null,
+      hasMore,
+      totalCount,
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          "Something went wrong on our end. We've been notified and are looking into it.",
+      },
+      { status: 500 }
+    );
+  }
 }
 
 /**
@@ -84,17 +94,29 @@ export async function POST(req: NextRequest) {
 
   const data = parsed.data;
 
-  const client = await db.client.create({
-    data: {
-      userId: auth.userId,
-      name: data.name,
-      contactName: data.contactName || null,
-      email: data.email || null,
-      phone: data.phone || null,
-      defaultHourlyRate: data.defaultHourlyRate ?? null,
-      defaultPaymentTerms: data.defaultPaymentTerms ?? null,
-    },
-  });
+  try {
+    const client = await db.client.create({
+      data: {
+        userId: auth.userId,
+        name: data.name,
+        contactName: data.contactName || null,
+        email: data.email || null,
+        phone: data.phone || null,
+        address: data.address || null,
+        notes: data.notes || null,
+        defaultHourlyRate: data.defaultHourlyRate ?? null,
+        defaultPaymentTerms: data.defaultPaymentTerms ?? 30,
+      },
+    });
 
-  return NextResponse.json(client, { status: 201 });
+    return NextResponse.json(client, { status: 201 });
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          "Something went wrong on our end. We've been notified and are looking into it.",
+      },
+      { status: 500 }
+    );
+  }
 }
