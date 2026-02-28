@@ -48,6 +48,9 @@ export async function GET(req: NextRequest) {
         client: {
           select: { id: true, name: true },
         },
+        _count: {
+          select: { tasks: true },
+        },
       },
       orderBy: [{ status: "asc" }, { name: "asc" }],
       take: limit + 1,
@@ -59,8 +62,26 @@ export async function GET(req: NextRequest) {
   const hasMore = projects.length > limit;
   if (hasMore) projects.pop();
 
+  // Get tracked hours per project
+  const projectIds = projects.map((p) => p.id);
+  const trackedHours = projectIds.length > 0
+    ? await db.timeEntry.groupBy({
+        by: ["projectId"],
+        where: { projectId: { in: projectIds } },
+        _sum: { durationMinutes: true },
+      })
+    : [];
+  const trackedByProject = new Map(
+    trackedHours.map((t) => [t.projectId, t._sum.durationMinutes || 0])
+  );
+
+  const enriched = projects.map((p) => ({
+    ...p,
+    trackedMinutes: trackedByProject.get(p.id) || 0,
+  }));
+
   return NextResponse.json({
-    data: projects,
+    data: enriched,
     nextCursor: hasMore ? projects[projects.length - 1]?.id : null,
     hasMore,
     totalCount,

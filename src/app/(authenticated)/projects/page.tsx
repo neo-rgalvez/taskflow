@@ -46,6 +46,8 @@ interface Project {
   createdAt: string;
   updatedAt: string;
   client: ProjectClient;
+  _count?: { tasks: number };
+  trackedMinutes?: number;
 }
 
 interface ProjectListResponse {
@@ -532,8 +534,9 @@ export default function ProjectsPage() {
               </div>
             ) : (
               projects.map((project) => {
+                const trackedHours = (project.trackedMinutes || 0) / 60;
                 const budgetPercent = project.budgetHours
-                  ? Math.round((0 / project.budgetHours) * 100)
+                  ? Math.round((trackedHours / project.budgetHours) * 100)
                   : 0;
                 const isOverdue =
                   project.deadline &&
@@ -656,7 +659,7 @@ export default function ProjectsPage() {
 
                       {/* Footer */}
                       <div className="flex items-center gap-4 pt-3 mt-3 border-t border-gray-100 text-xs text-gray-500">
-                        <span>0 tasks</span>
+                        <span>{project._count?.tasks ?? 0} tasks</span>
                         <span className="ml-auto font-mono">
                           {project.billingType === "hourly"
                             ? `${formatCurrency(

@@ -40,6 +40,11 @@ export async function GET(req: NextRequest) {
     const [clients, totalCount] = await Promise.all([
       db.client.findMany({
         where,
+        include: {
+          _count: {
+            select: { projects: true },
+          },
+        },
         orderBy: { name: "asc" },
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
