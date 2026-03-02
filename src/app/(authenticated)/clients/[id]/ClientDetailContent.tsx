@@ -596,7 +596,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
               headline="No projects for this client"
               description="Create a new project to start tracking work for this client."
               ctaLabel="+ Add Project"
-              ctaHref="/projects"
+              ctaHref={`/projects?clientId=${id}`}
             />
           ) : (
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -605,7 +605,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
                   Projects ({projects.length})
                 </h3>
                 <Link
-                  href="/projects"
+                  href={`/projects?clientId=${id}`}
                   className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 transition-colors"
                 >
                   + Add Project

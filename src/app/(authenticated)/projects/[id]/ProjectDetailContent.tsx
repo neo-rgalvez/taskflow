@@ -16,6 +16,8 @@ import {
   Trash2,
   Loader2,
   Send,
+  Pencil,
+  ChevronDown,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatDuration } from "@/lib/format";
@@ -78,6 +80,7 @@ interface ProjectData {
   hourlyRate: string | null;
   budgetHours: number | null;
   deadline: string | null;
+  updatedAt: string;
   client: { id: string; name: string };
 }
 
@@ -105,6 +108,8 @@ export default function ProjectDetailContent({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [inlineCreating, setInlineCreating] = useState<string | null>(null); // column key
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(false);
 
   // ─── Data Fetching ──────────────────────────────────────────────────────────
 
@@ -139,6 +144,25 @@ export default function ProjectDetailContent({ id }: { id: string }) {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [fetchTasks]);
+
+  // ─── Project Status Change ──────────────────────────────────────────────────
+
+  const handleProjectStatusChange = async (newStatus: string) => {
+    if (!project || changingStatus) return;
+    setChangingStatus(true);
+    setStatusMenuOpen(false);
+    const res = await apiFetch<ProjectData>(`/api/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: newStatus, updatedAt: project.updatedAt }),
+    });
+    if (res.error) {
+      toast("error", res.error);
+    } else if (res.data) {
+      setProject(res.data);
+      toast("success", `Project status changed to ${newStatus.replace(/_/g, " ")}.`);
+    }
+    setChangingStatus(false);
+  };
 
   // ─── Task Mutations ─────────────────────────────────────────────────────────
 
@@ -242,14 +266,59 @@ export default function ProjectDetailContent({ id }: { id: string }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-          <StatusBadge status={project.status} />
+          {/* Status dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setStatusMenuOpen(!statusMenuOpen)}
+              disabled={changingStatus}
+              className="inline-flex items-center gap-1"
+            >
+              <StatusBadge status={project.status} />
+              <ChevronDown size={14} className="text-gray-400" />
+            </button>
+            {statusMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setStatusMenuOpen(false)} />
+                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-20 py-1 min-w-[180px]">
+                  {[
+                    { key: "active", label: "Active" },
+                    { key: "on_hold", label: "On Hold" },
+                    { key: "completed", label: "Completed" },
+                    { key: "cancelled", label: "Cancelled" },
+                  ]
+                    .filter((s) => s.key !== project.status)
+                    .map((s) => (
+                      <button
+                        key={s.key}
+                        onClick={() => handleProjectStatusChange(s.key)}
+                        className="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100"
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
-        <button
-          onClick={() => setInlineCreating("todo")}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-md hover:bg-primary-600 transition-colors"
-        >
-          <Plus size={16} /> Add Task
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/projects/${id}/edit`}
+            onClick={(e) => {
+              e.preventDefault();
+              toast("info", "Edit project coming soon.");
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors"
+          >
+            <Pencil size={14} /> Edit
+          </Link>
+          <button
+            onClick={() => setInlineCreating("todo")}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-md hover:bg-primary-600 transition-colors"
+          >
+            <Plus size={16} /> Add Task
+          </button>
+        </div>
       </div>
 
       {/* Project Overview Bar */}

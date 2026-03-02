@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ProjectCardSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -97,7 +98,17 @@ function getInitials(name: string): string {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function ProjectsPage() {
+  return (
+    <Suspense fallback={<div className="p-8"><ProjectCardSkeleton /><ProjectCardSkeleton /><ProjectCardSkeleton /></div>}>
+      <ProjectsPageContent />
+    </Suspense>
+  );
+}
+
+function ProjectsPageContent() {
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const preselectedClientId = searchParams.get("clientId") || "";
 
   // Data state
   const [projects, setProjects] = useState<Project[]>([]);
@@ -224,10 +235,10 @@ export default function ProjectsPage() {
   }
 
   // Form handlers
-  function openCreateModal() {
+  function openCreateModal(preClientId?: string) {
     setEditingProject(null);
     setFormData({
-      clientId: "",
+      clientId: preClientId || "",
       name: "",
       description: "",
       billingType: "hourly",
@@ -240,6 +251,16 @@ export default function ProjectsPage() {
     setShowModal(true);
     fetchClients();
   }
+
+  // Auto-open create modal when navigating with ?clientId=
+  const openedFromClientRef = useRef(false);
+  useEffect(() => {
+    if (preselectedClientId && !openedFromClientRef.current) {
+      openedFromClientRef.current = true;
+      openCreateModal(preselectedClientId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectedClientId]);
 
   function openEditModal(project: Project) {
     setEditingProject(project);
@@ -442,7 +463,7 @@ export default function ProjectsPage() {
           </p>
         </div>
         <button
-          onClick={openCreateModal}
+          onClick={() => openCreateModal()}
           className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-md hover:bg-primary-600 transition-colors"
         >
           <Plus size={16} /> New Project

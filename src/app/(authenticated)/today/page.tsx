@@ -128,7 +128,7 @@ export default function TodayPage() {
                 return (
                   <div
                     key={task.id}
-                    className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 hover:shadow-md transition-all"
+                    className={`rounded-lg border shadow-sm p-4 hover:shadow-md transition-all ${isOverdue ? "bg-red-50 border-red-300" : "bg-white border-gray-200"}`}
                   >
                     <div className="flex items-start gap-3">
                       <button
