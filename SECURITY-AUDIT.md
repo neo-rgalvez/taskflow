@@ -1,109 +1,115 @@
-# TaskFlow — Security Audit (Code-Level)
+# TaskFlow — Security Audit
 
-> **Scope:** Every implemented API route, middleware path, database query, session flow, and configuration file has been reviewed against OWASP Top 10 (2021), common multi-tenant security failures, and professional penetration testing standards.
+> Code-level audit performed 2026-03-02.
+> Every API route handler, middleware function, database query, session flow, validation schema, and configuration file was read in full and checked.
 >
-> **Prior audit:** The previous version of this file audited the *plan documents*. This version audits the **actual shipped code** and identifies which planned mitigations were implemented, which were missed, and what new issues exist in the implementation.
+> **Methodology:** OWASP Top 10 (2021), multi-tenant data-isolation testing, professional penetration-test playbook for SaaS apps with user auth + database storage.
 
 ---
 
-## Audit Framework
+## Audit Checklist (used as the framework)
 
-### OWASP Top 10 (2021) Checklist
+### OWASP Top 10 (2021)
 
-| # | Risk | Relevance to TaskFlow |
-|---|------|-----------------------|
-| A01 | Broken Access Control | Multi-tenant app — every query must scope to `userId`. IDOR via URL parameter manipulation. |
-| A02 | Cryptographic Failures | Password hashing, session token generation, token storage |
-| A03 | Injection | SQL injection (via Prisma ORM), XSS (React auto-escaping + CSP), NoSQL injection (N/A) |
-| A04 | Insecure Design | Dev-mode auth bypass, missing re-authentication for sensitive actions |
-| A05 | Security Misconfiguration | Security headers, default credentials in seed data, open error messages |
-| A06 | Vulnerable Components | Dependency versions, known CVEs |
-| A07 | Auth Failures | Session management, brute force protection, credential stuffing |
-| A08 | Data Integrity Failures | Unsigned data, deserialization (N/A for this stack) |
-| A09 | Logging & Monitoring | Error logging, missing audit trail |
-| A10 | SSRF | Server-side URL fetching (not applicable — no URL-based inputs) |
+| #   | Risk                              | Applies? |
+| --- | --------------------------------- | -------- |
+| A01 | Broken Access Control             | Yes — multi-tenant, every query must scope by userId |
+| A02 | Cryptographic Failures            | Yes — password hashing, session tokens, cookie flags |
+| A03 | Injection                         | Yes — SQL (Prisma ORM), XSS (React) |
+| A04 | Insecure Design                   | Yes — dev-mode bypass, missing re-auth for sensitive ops |
+| A05 | Security Misconfiguration         | Yes — headers, default creds in seed, CSP directives |
+| A06 | Vulnerable & Outdated Components  | Yes — dependency audit |
+| A07 | Identification & Auth Failures    | Yes — brute force, credential stuffing, session mgmt |
+| A08 | Software & Data Integrity         | Partial — unsigned cookies (no HMAC), no CI signing |
+| A09 | Security Logging & Monitoring     | Yes — no audit trail, console.error leaks |
+| A10 | SSRF                              | No — app never fetches user-supplied URLs |
 
-### Multi-Tenant / Penetration Testing Checklist
+### Multi-Tenant / Pentest Checklist
 
-- Can User A see/modify/delete User B's data on **every** endpoint?
-- Can unauthenticated requests reach any protected resource?
-- Are sessions properly created, validated, and destroyed?
-- Is input validated server-side on every write path?
-- Do error messages leak internal details?
-- Are security headers complete?
-- Are secrets excluded from committed code?
-- Is rate limiting active?
-- Does password change require current password?
-- Does account deletion cascade completely?
-
----
-
-## Summary of Findings
-
-**Total issues: 21** — 4 Critical, 6 High, 7 Medium, 4 Low
-
-| Severity | Count | Description |
-|----------|-------|-------------|
-| **Critical** | 4 | Auth bypass in dev mode, error message info leak, missing rate limiting, missing CSRF validation |
-| **High** | 6 | TOCTOU race in project/task delete, email change without password, timing attack on login, missing bcrypt dummy comparison on registration, missing userId filter on time entry aggregation, account deletion doesn't cascade immediately |
-| **Medium** | 7 | Registration reveals email existence, session cookie not Secure outside production, no Origin header check, next.config.mjs has no security headers for API routes, seed data has weak password, CSP allows unsafe-eval/unsafe-inline, no session count limit per user |
-| **Low** | 4 | Dev database URL fallback in production risk, console.error may log sensitive data, no Referrer-Policy on API responses, missing rate limit on health endpoint |
+1. Can User A read/update/delete User B's data on **every** endpoint?
+2. Can unauthenticated requests reach any protected resource?
+3. Session: httpOnly? secure? properly destroyed on logout?
+4. Input validated server-side on every write path?
+5. Error messages generic — no stack traces or internal details?
+6. Password hashes or internal IDs exposed in any response?
+7. Security headers complete?
+8. Secrets in committed code?
+9. Rate limiting active and effective?
+10. Password change requires current password?
+11. Account deletion cascades completely?
 
 ---
 
-## Issues by Severity
+## Summary
 
-### CRITICAL
+| Severity     | Count | Key theme |
+| ------------ | ----- | --------- |
+| **Critical** | 4     | Dev auth bypass, info-leaking error messages, zero rate limiting, broken CSRF defense-in-depth |
+| **High**     | 5     | TOCTOU delete, email change without password, login timing oracle, unguarded scheduled-deletion login, missing userId on aggregation queries |
+| **Medium**   | 7     | Cookie Secure flag, CSP unsafe-eval/inline, no session cap, registration enumeration, seed in prod, no Origin check, empty next.config |
+| **Low**      | 4     | DB-URL fallback, console.error logging, Referrer-Policy on API, health endpoint unthrottled |
+| **Total**    | **20** | |
 
-#### C1 — Development Auth Bypass Reachable in Production
+---
 
-**Location:** `src/lib/auth.ts:57-63`, `src/middleware.ts:40-46`
+## Critical
 
-**Issue:** Both the middleware and `getSession()` have development-mode fallback logic. The middleware allows **all protected routes without a session cookie** when `NODE_ENV === "development"`. The `getSession()` function returns the **first user in the database** as a fallback when no valid session exists in development mode.
+### C-1. Development-mode authentication bypass ships in production code
 
-**Real-world risk:** If `NODE_ENV` is accidentally set to `"development"` in production (misconfigured Netlify env, missing variable), **every API route is accessible without authentication** and operates as the first user in the database. This is a complete authentication bypass.
+**Files:** `src/lib/auth.ts:57-63`, `src/middleware.ts:39-46`
 
-**Evidence:**
+The middleware lets **every protected page** through without a session when `NODE_ENV === "development"`:
+
 ```typescript
 // middleware.ts:40-46
 if (process.env.NODE_ENV === "development") {
   if (isAuthPage && sessionToken) {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
-  return NextResponse.next(); // ← All protected routes accessible
+  return NextResponse.next(); // ← all protected routes pass
 }
+```
 
+`getSession()` then returns the **first user in the database** as a fallback:
+
+```typescript
 // auth.ts:57-63
 if (process.env.NODE_ENV === "development") {
-  const devUser = await db.user.findFirst(); // ← Returns arbitrary user
+  const devUser = await db.user.findFirst();
   if (devUser) {
     return { userId: devUser.id, sessionId: "dev-session" };
   }
 }
 ```
 
-**Fix:** Remove the development bypass entirely. Developers should create a real account and log in via the normal flow. The seed script already provides test credentials (`sarah@fletcherdesign.co / password123`). If a dev convenience is needed, use a dedicated `DEV_AUTO_LOGIN=true` environment variable that is **never** tied to `NODE_ENV`.
+**Risk:** If `NODE_ENV` is misconfigured on the host (not set, or explicitly set to `"development"` on a staging/preview deploy), every page and API route is accessible without authentication and operates as an arbitrary user. This is a full auth bypass.
+
+**Attack:** Visit any protected page or call any API endpoint on a host where `NODE_ENV !== "production"`.
+
+**Fix:** Delete both development fallbacks. Use the seed user's real credentials (`sarah@fletcherdesign.co / password123`) for dev testing. If a shortcut is needed, gate it on a separate `DEV_BYPASS_AUTH=true` env var that CI/CD never sets.
 
 ---
 
-#### C2 — Login Error Handler Leaks Internal Error Messages
+### C-2. Login 500-error handler returns raw `err.message` to the client
 
-**Location:** `src/app/api/auth/login/route.ts:78-85`
-
-**Issue:** The login endpoint's catch block returns the raw error message to the client:
+**File:** `src/app/api/auth/login/route.ts:78-84`
 
 ```typescript
-const message = err instanceof Error ? err.message : String(err);
-console.error("Login error:", message, err);
-return NextResponse.json(
-  { error: `Login failed: ${message}` }, // ← Leaks internal error
-  { status: 500 }
-);
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error("Login error:", message, err);
+  return NextResponse.json(
+    { error: `Login failed: ${message}` }, // ← exposes internal detail
+    { status: 500 }
+  );
+}
 ```
 
-**Real-world risk:** Database connection errors, Prisma query errors, or bcrypt errors could expose database hostnames, table names, query structure, or other internal details to attackers. This violates OWASP A05 (Security Misconfiguration).
+**Risk:** A Prisma connection error, bcrypt failure, or out-of-memory error leaks database hostnames, query text, or stack-trace fragments to the attacker. Violates OWASP A05.
 
-**Fix:** Return a generic error message. Log the real error server-side only:
+**Note:** The registration handler (`register/route.ts:86-89`) does this correctly — it returns a generic message. The login handler is the exception.
+
+**Fix:**
 ```typescript
 return NextResponse.json(
   { error: "Login failed. Please try again." },
@@ -113,47 +119,49 @@ return NextResponse.json(
 
 ---
 
-#### C3 — No Rate Limiting on Any Endpoint
+### C-3. Zero rate limiting on any endpoint
 
-**Location:** All API routes under `src/app/api/`
+**Files:** Every route under `src/app/api/`
 
-**Issue:** The implementation plan specifies Upstash Redis rate limiting (5/15min on login, 3/hr on signup, etc.), but **no rate limiting is implemented in any API route**. The Upstash packages (`@upstash/ratelimit`, `@upstash/redis`) are not installed, and no rate limiting middleware or helper exists anywhere in the codebase.
+The `.env.example` lists `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, but no Upstash packages are installed and no rate-limiting code exists anywhere in the codebase.
 
-**Real-world risk:**
-- **Credential stuffing:** Unlimited login attempts allow automated password guessing
-- **Account enumeration:** Registration endpoint reveals email existence (see M1) with no throttle
-- **DoS:** Expensive endpoints (analytics, dashboard stats) can be hammered without limit
-- **Data scraping:** All list endpoints can be iterated without throttle
-
-**Evidence:**
-```bash
+```
 $ grep -r "ratelimit\|upstash\|rate.limit\|throttle" src/
-# (no results)
+(no results)
 ```
 
-**Fix:** Install `@upstash/ratelimit` and `@upstash/redis`. Create a `src/lib/rate-limit.ts` helper. Apply rate limiters at minimum to:
-- `POST /api/auth/login` — 5 per 15 min per IP
-- `POST /api/auth/register` — 3 per hour per IP
-- `POST /api/settings/delete-account` — 3 per hour per user
-- `POST /api/settings/change-password` — 5 per hour per user
-- All authenticated endpoints — 100 per minute per user
+**Risk:**
+- **Credential stuffing:** Unlimited `POST /api/auth/login` attempts.
+- **Account enumeration:** `POST /api/auth/register` reveals whether an email is registered (see H-4), and can be called at line speed.
+- **Resource exhaustion:** Analytics and dashboard queries are expensive (`findMany` across multiple tables).
+
+**Fix:** Add `@upstash/ratelimit` + `@upstash/redis`. Minimum limits:
+
+| Endpoint | Limit | Key |
+|----------|-------|-----|
+| `POST /api/auth/login` | 5 per 15 min | IP |
+| `POST /api/auth/register` | 3 per hour | IP |
+| `POST /api/settings/delete-account` | 3 per hour | userId |
+| `POST /api/settings/change-password` | 5 per hour | userId |
+| All authenticated endpoints | 100 per min | userId |
+| `GET /api/health` | 10 per min | IP |
 
 ---
 
-#### C4 — No CSRF Protection Beyond SameSite Cookie
+### C-4. No CSRF protection beyond SameSite cookie
 
-**Location:** All state-changing API routes (POST, PATCH, DELETE)
+**Files:** All state-changing routes (POST, PATCH, DELETE)
 
-**Issue:** The session cookie uses `sameSite: "strict"`, which provides CSRF protection in modern browsers. However:
-1. There is **no `Origin` header validation** as defense-in-depth
-2. There is **no CSRF token mechanism**
-3. Older browsers or certain configurations may not enforce `SameSite`
+The session cookie uses `sameSite: "strict"`, which blocks cross-site request forgery in modern browsers. However:
 
-The implementation plan (§4.2, QA §12.4) specifies CSRF protection, but only `SameSite` is implemented.
+1. No `Origin` header validation exists as defense-in-depth.
+2. No CSRF token mechanism exists.
+3. `SameSite` is not enforced by older browsers or certain plugins.
 
-**Real-world risk:** If `SameSite` enforcement is bypassed (older browser, browser bug, plugin), any cross-origin site could forge state-changing requests using the user's session.
+The QA checklist (§12.4) requires: "POST/PUT/DELETE without valid CSRF token → 403." This is unimplemented.
 
-**Fix:** Add `Origin` header verification middleware for all state-changing requests:
+**Fix:** Add Origin-header verification in middleware or a shared helper for all state-changing requests:
+
 ```typescript
 const origin = req.headers.get("origin");
 if (origin && origin !== process.env.NEXT_PUBLIC_APP_URL) {
@@ -163,612 +171,521 @@ if (origin && origin !== process.env.NEXT_PUBLIC_APP_URL) {
 
 ---
 
-### HIGH
+## High
 
-#### H1 — TOCTOU Race Condition in Project and Task Deletion
+### H-1. TOCTOU race in project and task DELETE
 
-**Location:** `src/app/api/projects/[id]/route.ts:183-196`, `src/app/api/tasks/[id]/route.ts:151-168`
+**Files:** `src/app/api/projects/[id]/route.ts:183-194`, `src/app/api/tasks/[id]/route.ts:151-163`
 
-**Issue:** Both `DELETE /api/projects/[id]` and `DELETE /api/tasks/[id]` use a two-step pattern: first `findFirst` to verify ownership, then `delete` by `id` alone. Between the check and the delete, another request could change ownership or the record could be modified.
+Both handlers use a two-step check-then-act pattern:
 
 ```typescript
-// projects/[id]/route.ts:183-194
+// Step 1: verify ownership
 const project = await db.project.findFirst({
-  where: { id: params.id, userId: auth.userId }, // Step 1: check ownership
+  where: { id: params.id, userId: auth.userId },
 });
-if (!project) { return 404; }
-await db.project.delete({ where: { id: params.id } }); // Step 2: delete WITHOUT userId check
+if (!project) return 404;
+
+// Step 2: delete WITHOUT userId — uses only id
+await db.project.delete({ where: { id: params.id } });
 ```
 
-**Real-world risk:** In a multi-tenant system, this is a classic Time-of-Check-Time-of-Use (TOCTOU) vulnerability. While unlikely to be exploitable in practice (CUIDs are random, race window is tiny), it violates the principle of least privilege. The client DELETE route correctly uses `deleteMany` with `userId` — the project and task routes should follow the same pattern.
+Compare with the client DELETE handler, which is correct:
 
-**Fix:** Use `deleteMany` with both `id` and `userId` in the where clause (same pattern as `DELETE /api/clients/[id]`):
+```typescript
+// clients/[id]/route.ts:153-155 — atomic check+delete
+const result = await db.client.deleteMany({
+  where: { id: params.id, userId: auth.userId },
+});
+```
+
+**Risk:** Classical Time-of-Check-Time-of-Use. The race window is tiny and CUIDs are random, making exploitation unlikely in practice, but it violates the principle of incorporating the ownership check in the write itself.
+
+**Fix:** Use `deleteMany` with both `id` and `userId`:
 ```typescript
 const result = await db.project.deleteMany({
   where: { id: params.id, userId: auth.userId },
 });
-if (result.count === 0) { return 404; }
+if (result.count === 0) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 ```
 
 ---
 
-#### H2 — Email Change Without Password Re-authentication
+### H-2. Email change does not require current password
 
-**Location:** `src/app/api/settings/account/route.ts:82-100`
+**File:** `src/app/api/settings/account/route.ts:58-135`
 
-**Issue:** The `PATCH /api/settings/account` endpoint allows changing the user's email with only a valid session — no current password required.
+`PATCH /api/settings/account` allows changing name, email, and timezone with only a valid session — no password re-entry.
 
-**Real-world risk:** If an attacker obtains a valid session (stolen cookie, physical device access, session fixation), they can:
-1. Change the email to their own
-2. Use forgot-password flow on the new email
-3. Set a new password → permanent account hijack
+**Attack chain:** Stolen session → change email → use forgot-password on new email → set new password → permanent account takeover.
 
-The previous plan-level audit (Issue #9) flagged this. It was not fixed in the implementation.
-
-**Fix:** Require `currentPassword` in the request body when `email` is being changed. Verify it with `bcrypt.compare()` before applying the update.
+**Fix:** When `email` is present in the request body, require a `currentPassword` field and verify it with `bcrypt.compare()`.
 
 ---
 
-#### H3 — Login Timing Attack Enables User Enumeration
+### H-3. Login timing side-channel reveals registered emails
 
-**Location:** `src/app/api/auth/login/route.ts:28-48`
+**File:** `src/app/api/auth/login/route.ts:28-48`
 
-**Issue:** When a user is not found, the endpoint returns immediately. When a user is found, it runs `bcrypt.compare()` (~200-300ms). This timing difference reveals whether an email address is registered.
+When the email is not found, the handler returns immediately (~5 ms). When it is found, `bcrypt.compare()` runs (~200-300 ms). The difference is measurable over the network.
 
+**Fix:** Always run a bcrypt comparison:
 ```typescript
-const user = await db.user.findFirst({ ... });
-if (!user) {
-  return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
-  // ← Returns in ~5ms
-}
-const valid = await bcrypt.compare(password, user.passwordHash);
-// ← Takes ~250ms
-```
+const DUMMY_HASH = await bcrypt.hash("x", 12); // precompute at module load
 
-**Real-world risk:** An attacker can determine which email addresses have accounts by measuring response times. This enables targeted phishing and credential stuffing.
-
-**Fix:** Always run bcrypt comparison, even when the user is not found:
-```typescript
-const DUMMY_HASH = "$2a$12$dummy.hash.for.timing.protection.padded";
 if (!user) {
-  await bcrypt.compare(password, DUMMY_HASH); // Constant-time regardless
+  await bcrypt.compare(password, DUMMY_HASH);
   return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
 }
 ```
 
 ---
 
-#### H4 — Registration Endpoint Reveals Email Existence (Different Error Code)
+### H-4. Scheduled-deletion users can still log in
 
-**Location:** `src/app/api/auth/register/route.ts:37-42`
+**File:** `src/app/api/auth/login/route.ts` (no check), `src/lib/auth.ts` (no check)
 
-**Issue:** The registration endpoint returns HTTP 409 with "An account with this email already exists" when a duplicate email is submitted. While this is standard UX, it enables automated email enumeration when combined with the lack of rate limiting (C3).
+After `POST /api/settings/delete-account`, the user's `scheduledDeletionAt` is set and all sessions are destroyed. But nothing prevents the user from immediately logging in again and creating a new session, because neither `login/route.ts` nor `getSession()` checks `scheduledDeletionAt`.
 
-**Real-world risk:** An attacker can systematically check thousands of email addresses against the registration endpoint to build a list of registered users. Without rate limiting, this is trivially automatable.
-
-**Fix:** This is acceptable UX if rate limiting (C3) is implemented. With rate limiting: low risk. Without rate limiting: high risk for enumeration.
-
----
-
-#### H5 — Missing userId Filter on Time Entry Aggregation Queries
-
-**Location:** `src/app/api/tasks/[id]/route.ts:126-129`, `src/app/api/tasks/[id]/position/route.ts:69-72`, `src/app/api/projects/route.ts:67-73`
-
-**Issue:** Several time entry aggregation queries filter by `taskId` or `projectId` but **not** by `userId`:
-
-```typescript
-// tasks/[id]/route.ts:126-129 (PATCH response)
-const timeAgg = await db.timeEntry.aggregate({
-  where: { taskId: params.id }, // ← No userId filter
-  _sum: { durationMinutes: true },
-});
-
-// tasks/[id]/position/route.ts:69-72
-const timeAgg = await db.timeEntry.aggregate({
-  where: { taskId: params.id }, // ← No userId filter
-  _sum: { durationMinutes: true },
-});
-
-// projects/route.ts:67-73
-const trackedHours = projectIds.length > 0
-  ? await db.timeEntry.groupBy({
-      by: ["projectId"],
-      where: { projectId: { in: projectIds } }, // ← No userId filter
-      _sum: { durationMinutes: true },
-    })
-  : [];
-```
-
-**Real-world risk:** In the current single-tenant-per-row data model, time entries are already scoped by the parent task/project ownership, so this doesn't leak *other users' data* in practice. However, it violates defense-in-depth — if the data model ever changes (e.g., shared projects), these queries would aggregate across users. The fact that the same aggregation in `GET /api/tasks/[id]/time-entries` correctly includes `userId: auth.userId` shows this was intended.
-
-**Fix:** Add `userId: auth.userId` to all time entry aggregation queries for consistency and defense-in-depth.
-
----
-
-#### H6 — Account Deletion Doesn't Cascade Data Immediately
-
-**Location:** `src/app/api/settings/delete-account/route.ts:63-67`
-
-**Issue:** Account deletion only sets `scheduledDeletionAt = new Date()` but does not actually delete any data. The plan mentions a "daily job" that hard-deletes after 30 days, but **this job does not exist in the codebase**. Meanwhile:
-1. The user's data (clients, projects, tasks, time entries) remains accessible if the session is somehow still valid
-2. No mechanism prevents login after deletion is scheduled
-3. There is no reactivation path documented
-
-```typescript
-await db.user.update({
-  where: { id: auth.userId },
-  data: { scheduledDeletionAt: new Date() },
-});
-```
-
-**Real-world risk:** Users who "delete" their account have their data retained indefinitely because the cleanup job doesn't exist. This is a GDPR/privacy compliance issue. Additionally, a scheduled-for-deletion user could potentially log back in since the account still exists.
+Additionally, the background job to hard-delete after 30 days does not exist in the codebase.
 
 **Fix:**
-1. Implement the scheduled deletion cron job (or Netlify scheduled function)
-2. Add a check in `getSession()` / `requireAuth()` that rejects users where `scheduledDeletionAt` is set
-3. Document the 30-day grace period clearly in the deletion response
+1. In `login/route.ts`, after finding the user, check `user.scheduledDeletionAt`. If set, return 403 "This account is scheduled for deletion."
+2. In `getSession()`, after finding the session, fetch the user's `scheduledDeletionAt` and reject if set.
+3. Implement the cleanup job or switch to immediate hard-delete with Prisma cascade.
 
 ---
 
-### MEDIUM
+### H-5. Missing userId filter on time-entry aggregation queries
 
-#### M1 — Registration Reveals Email Existence Without Throttle
+**Files:**
+- `src/app/api/tasks/[id]/route.ts:126-129` (PATCH response)
+- `src/app/api/tasks/[id]/position/route.ts:69-72`
+- `src/app/api/projects/route.ts:67-73`
+- `src/app/api/tasks/route.ts:92-96`
 
-**Location:** `src/app/api/auth/register/route.ts:37-42`
+These aggregations filter by `taskId` or `projectId` but omit `userId`:
 
-**Issue:** Combined with C3 (no rate limiting), the 409 response on duplicate email enables automated user enumeration. See H4 for details.
+```typescript
+// tasks/[id]/route.ts:126-129
+const timeAgg = await db.timeEntry.aggregate({
+  where: { taskId: params.id },   // ← no userId
+  _sum: { durationMinutes: true },
+});
+```
 
-**Fix:** Implement rate limiting per C3. Consider returning a 200 with "Check your email for verification" regardless of whether the account exists (requires email verification flow).
+In the current data model, time entries are indirectly owned through the parent task/project, so this does not cause a real data leak today. However it breaks defense-in-depth: if shared projects are ever introduced, these queries would aggregate across users.
+
+**Contrast:** `GET /api/tasks/[id]/time-entries` correctly includes `userId: auth.userId`.
+
+**Fix:** Add `userId: auth.userId` to every time-entry aggregation `where` clause.
 
 ---
 
-#### M2 — Session Cookie Not Secure Outside Production
+## Medium
 
-**Location:** `src/app/api/auth/login/route.ts:70-71`, `src/app/api/auth/register/route.ts:74-75`
+### M-1. Session cookie `secure` flag is conditional on NODE_ENV
 
-**Issue:** The `secure` flag on the session cookie is conditional:
+**Files:** `login/route.ts:71`, `register/route.ts:76`, `logout/route.ts:19,30`
+
 ```typescript
 secure: process.env.NODE_ENV === "production",
 ```
 
-**Real-world risk:** In staging environments, preview deploys, or any non-production HTTPS deployment where `NODE_ENV` is not exactly `"production"`, the cookie will be sent over HTTP, exposing it to network sniffing.
+On staging, preview deploys, or any HTTPS environment where `NODE_ENV` is not literally `"production"`, the cookie is sent over HTTP, exposing it to network interception.
 
-**Fix:** Set `secure: true` unconditionally for any deployed environment. Only disable for localhost development:
+**Fix:** `secure: process.env.NODE_ENV !== "development"` (or unconditionally `true` for any deployed env).
+
+---
+
+### M-2. CSP allows `unsafe-eval` and `unsafe-inline`
+
+**File:** `netlify.toml:21`
+
+```
+script-src 'self' 'unsafe-eval' 'unsafe-inline'
+```
+
+These directives effectively disable CSP's XSS protection. Injected `<script>` tags and `eval()` calls would execute.
+
+**Fix:** Use nonce-based CSP. Next.js supports `nonce` in `next.config.mjs`. At minimum, remove `unsafe-eval`.
+
+---
+
+### M-3. No limit on sessions per user
+
+**Files:** `login/route.ts:56-65`, `register/route.ts:61-70`
+
+Every login creates a new session with no cap. An attacker with valid credentials could create thousands of sessions, bloating the sessions table and making "revoke all sessions" on password change slow.
+
+**Fix:** Cap at 10 sessions per user. On new login, delete the oldest session when the cap is reached.
+
+---
+
+### M-4. Registration endpoint reveals email existence without throttle
+
+**File:** `src/app/api/auth/register/route.ts:37-41`
+
+Returns HTTP 409 with `"An account with this email already exists."` This is standard UX, but combined with C-3 (no rate limiting), enables automated email harvesting at line speed.
+
+**Fix:** Acceptable if rate limiting (C-3) is implemented. Without it, this is exploitable for enumeration.
+
+---
+
+### M-5. Seed script has no production guard
+
+**File:** `prisma/seed.ts:8`
+
+Creates a user with password `password123`. If the seed is accidentally run against a production database, a known credential exists.
+
+**Fix:** Add at the top:
 ```typescript
-secure: process.env.NODE_ENV !== "development" || req.url.startsWith("https"),
+if (process.env.NODE_ENV === "production") {
+  throw new Error("Seed script must not run in production");
+}
 ```
 
 ---
 
-#### M3 — No Origin Header Validation on API Routes
+### M-6. No Origin-header validation on any route
 
-**Location:** All API routes
-
-**Issue:** No API route checks the `Origin` or `Referer` header. While `SameSite=Strict` cookies prevent most CSRF, Origin validation is a critical defense-in-depth layer. See C4.
-
-**Fix:** Add Origin validation middleware.
+Duplicate of C-4 defense-in-depth layer. Listed here because even without the cookie bypass, Origin checking is a standard OWASP recommendation.
 
 ---
 
-#### M4 — next.config.mjs Has No Security Configuration
+### M-7. `next.config.mjs` is empty — no security headers for non-Netlify deployments
 
-**Location:** `next.config.mjs`
+**File:** `next.config.mjs`
 
-**Issue:** The Next.js config is completely empty:
 ```javascript
 const nextConfig = {};
 ```
 
-While security headers are set in `netlify.toml`, they only apply when deployed to Netlify. The Next.js config should also set headers for:
-- Local development security testing
-- Non-Netlify deployment targets
-- API route responses (Netlify headers may not apply to serverless function responses)
+Security headers are in `netlify.toml` but only apply on Netlify. API route responses from Netlify Functions may not inherit `[[headers]]` blocks either. Local dev has no security headers at all.
 
-**Fix:** Add security headers in `next.config.mjs`:
+**Fix:** Set headers via `next.config.mjs` `headers()` and disable `X-Powered-By`:
 ```javascript
 const nextConfig = {
-  headers: async () => [{
-    source: "/:path*",
-    headers: [
-      { key: "X-Frame-Options", value: "DENY" },
-      { key: "X-Content-Type-Options", value: "nosniff" },
-      // etc.
-    ],
-  }],
   poweredBy: false,
+  headers: async () => [{ source: "/:path*", headers: [...] }],
 };
 ```
 
 ---
 
-#### M5 — Seed Data Contains Weak Default Password
+## Low
 
-**Location:** `prisma/seed.ts:8`
+### L-1. Database URL fallback activates when NODE_ENV is unset
 
-**Issue:** The seed script creates a user with password `password123`:
-```typescript
-const passwordHash = await bcrypt.hash("password123", 12);
-```
+**File:** `src/lib/db.ts:4`
 
-**Real-world risk:** If seed data is accidentally run against a production database (misconfigured CI/CD), a known password exists. The email `sarah@fletcherdesign.co` with password `password123` would be a trivially guessable account.
-
-**Fix:** Add a guard that prevents seeding in production:
-```typescript
-if (process.env.NODE_ENV === "production") {
-  console.error("Seed script cannot run in production.");
-  process.exit(1);
-}
-```
-
----
-
-#### M6 — CSP Allows unsafe-eval and unsafe-inline
-
-**Location:** `netlify.toml:21`
-
-**Issue:** The Content-Security-Policy includes both `'unsafe-eval'` and `'unsafe-inline'` for scripts:
-```
-script-src 'self' 'unsafe-eval' 'unsafe-inline'
-```
-
-**Real-world risk:** These directives significantly weaken XSS protection:
-- `unsafe-inline` allows injected `<script>` tags to execute
-- `unsafe-eval` allows `eval()`, `Function()`, and similar dynamic code execution
-- Together, they essentially negate CSP's XSS protection
-
-**Fix:** Use nonce-based CSP for inline scripts. Next.js supports `nonce` configuration. Remove `unsafe-eval` (if needed for development only, use a dev-specific CSP). At minimum, remove `unsafe-eval` in production.
-
----
-
-#### M7 — No Session Count Limit Per User
-
-**Location:** `src/app/api/auth/login/route.ts:56-65`, `src/app/api/auth/register/route.ts:61-70`
-
-**Issue:** Every login/registration creates a new session without checking how many active sessions the user already has. There is no maximum session count.
-
-**Real-world risk:** An attacker who obtains valid credentials could create unlimited sessions, making it impossible to revoke all compromised access (they'd need to change password to invalidate all). Also, session table could grow unboundedly.
-
-**Fix:** Either limit sessions to N (e.g., 10) per user (delete oldest when exceeded), or add a "revoke all sessions" button in settings.
-
----
-
-### LOW
-
-#### L1 — Development Database URL Fallback
-
-**Location:** `src/lib/db.ts:4-6`
-
-**Issue:** The database module sets a fallback `DATABASE_URL` when none is configured and `NODE_ENV` is not production:
 ```typescript
 if (!process.env.DATABASE_URL && process.env.NODE_ENV !== "production") {
-  process.env.DATABASE_URL = "postgresql://taskflow:taskflow@localhost:5432/taskflow";
-}
 ```
 
-**Real-world risk:** Low — the guard checks for non-production. However, if `NODE_ENV` is unset (defaults to undefined, not "production"), the fallback activates, potentially connecting to an unintended database.
+If `NODE_ENV` is unset (not `"production"`, not `"development"` — just undefined), the fallback activates, connecting to `postgresql://taskflow:taskflow@localhost:5432/taskflow`.
 
-**Fix:** Only set fallback when `NODE_ENV === "development"` (explicit match, not negation of production).
-
----
-
-#### L2 — Console.error May Log Sensitive Data
-
-**Location:** Multiple API routes (login, registration, analytics, dashboard, settings)
-
-**Issue:** Several catch blocks log the full error object:
-```typescript
-console.error("Login error:", message, err);
-console.error("GET /api/analytics error:", err);
-```
-
-In serverless environments (Netlify Functions), these logs are stored in the provider's logging dashboard. If errors contain request bodies, they could include passwords, tokens, or personal data.
-
-**Fix:** Log only error messages, not full error objects. Never log request bodies. Use structured logging with sensitive field redaction.
+**Fix:** Only activate on explicit `=== "development"`.
 
 ---
 
-#### L3 — No Referrer-Policy on API Responses
+### L-2. `console.error` logs full error objects in multiple routes
 
-**Location:** All API route responses
+**Files:** `login/route.ts:80`, `register/route.ts:85`, `analytics/route.ts:289`, `dashboard/stats` (uncaught), `settings/account/route.ts:32,129`, `settings/change-password/route.ts:94`, `settings/delete-account/route.ts:97`, `tasks/route.ts:144`, `time-entries/route.ts:95`
 
-**Issue:** The `netlify.toml` sets `Referrer-Policy: strict-origin-when-cross-origin` for page responses, but API responses from Netlify Functions may not inherit these headers.
+In serverless environments, these land in the provider's logging dashboard. If errors contain request bodies or database queries, sensitive data could be persisted in logs.
 
-**Fix:** Set headers in API responses or in Next.js middleware.
-
----
-
-#### L4 — No Rate Limit on Health Endpoint
-
-**Location:** `src/app/api/health/route.ts`
-
-**Issue:** The health endpoint executes a database query (`SELECT 1`) on every request with no rate limiting. It could be used as a DoS amplifier.
-
-**Fix:** Add rate limiting (10/min per IP) or cache the response for a few seconds.
+**Fix:** Log only `err.message`, never the full error or request body. Use a structured logger with sensitive-field redaction.
 
 ---
 
-## Authentication Audit
+### L-3. No Referrer-Policy on API responses
 
-### Session Lifecycle — What's Implemented vs. Planned
+API responses from Netlify Functions do not necessarily inherit the `[[headers]]` block in `netlify.toml`, which only targets page responses. Referrer headers on API redirects could leak URL paths.
 
-| Feature | Planned | Implemented | Status |
-|---------|---------|-------------|--------|
-| Database-backed sessions | Yes | Yes | PASS |
-| SHA-256 hash of token stored (not raw) | Yes | Yes (`createHash("sha256")`) | PASS |
-| Session token generated with `nanoid(32)` | Yes | Yes | PASS |
-| `httpOnly` cookie | Yes | Yes | PASS |
-| `secure` cookie in production | Yes | Yes (conditional) | WARN — see M2 |
-| `sameSite: strict` | Yes | Yes | PASS |
-| 30-day absolute expiry | Yes | Yes (`expiresAt`) | PASS |
-| 7-day idle timeout | Yes | Yes (`lastActiveAt` check) | PASS |
-| Touch `lastActiveAt` on each request | Yes | Yes | PASS |
-| Logout destroys server session | Yes | Yes (`deleteMany`) | PASS |
-| Logout clears cookie | Yes | Yes (`maxAge: 0`) | PASS |
-| Password change invalidates other sessions | Yes | Yes | PASS |
-| Dev mode bypass | Not planned for prod | Exists (dangerous) | **FAIL — C1** |
+**Fix:** Set via Next.js middleware.
 
-### Can Any Page/Action Work Without Login?
+---
 
-| Route | Should Require Auth | Actually Requires Auth | Status |
-|-------|-------------------|----------------------|--------|
+### L-4. Health endpoint has no rate limit and executes a DB query
+
+**File:** `src/app/api/health/route.ts`
+
+`SELECT 1` on every request. Can be used as a low-cost amplification vector.
+
+**Fix:** Rate limit (10/min per IP) or cache for a few seconds.
+
+---
+
+## Authentication Deep Dive
+
+### Session Lifecycle
+
+| Feature | Status |
+| ------- | ------ |
+| Token: `nanoid(32)` — 192 bits of entropy | **PASS** |
+| Storage: SHA-256 hash of token in DB (raw never stored) | **PASS** |
+| Cookie: `httpOnly: true` | **PASS** |
+| Cookie: `sameSite: "strict"` | **PASS** |
+| Cookie: `secure` in production | **PASS** (conditional — see M-1) |
+| Cookie: `path: "/"` | **PASS** |
+| Cookie: `maxAge: 30 days` (matches DB `expiresAt`) | **PASS** |
+| Absolute expiry: 30 days (`expiresAt`) | **PASS** |
+| Idle timeout: 7 days (`lastActiveAt`) | **PASS** |
+| Touch `lastActiveAt` on each authenticated request | **PASS** |
+| Logout: server session deleted (`deleteMany`) | **PASS** |
+| Logout: cookie cleared (`maxAge: 0`) | **PASS** |
+| Password change: all other sessions deleted | **PASS** |
+| Account deletion: all sessions deleted + cookie cleared | **PASS** |
+| Dev-mode bypass | **FAIL — C-1** |
+| Scheduled-deletion users blocked from login | **FAIL — H-4** |
+
+### Pages accessible without login
+
+| Route | Auth required? | Actually enforced? | Verdict |
+| ----- | -------------- | ------------------ | ------- |
 | `GET /` (landing) | No | No | PASS |
 | `GET /login` | No | No | PASS |
 | `GET /signup` | No | No | PASS |
 | `GET /api/health` | No | No | PASS |
 | `POST /api/auth/login` | No | No | PASS |
 | `POST /api/auth/register` | No | No | PASS |
-| `POST /api/auth/logout` | No* | No* | PASS — gracefully handles missing session |
-| `GET /dashboard` | Yes | **Dev bypass (C1)** | FAIL in dev |
-| All `/api/clients/*` | Yes | Yes (`requireAuth`) | PASS |
-| All `/api/projects/*` | Yes | Yes (`requireAuth`) | PASS |
-| All `/api/tasks/*` | Yes | Yes (`requireAuth`) | PASS |
-| All `/api/time-entries/*` | Yes | Yes (`requireAuth`) | PASS |
-| All `/api/settings/*` | Yes | Yes (`requireAuth`) | PASS |
-| `GET /api/analytics` | Yes | Yes (`requireAuth`) | PASS |
-| `GET /api/dashboard/stats` | Yes | Yes (`requireAuth`) | PASS |
+| `POST /api/auth/logout` | No (graceful) | No | PASS |
+| All `/dashboard`, `/clients/*`, `/projects/*`, etc. | Yes | Middleware redirects to login (prod). Dev bypass — **C-1**. | PASS in prod, FAIL in dev |
+| All `/api/clients/*`, `/api/projects/*`, etc. | Yes | `requireAuth()` in each handler (middleware **skips** API routes). | PASS |
 
-**Note:** Middleware skips API routes entirely (`pathname.startsWith("/api/")`), so API route protection relies solely on `requireAuth()` in each handler. This is correct — the middleware handles page redirects, and `requireAuth()` handles API auth.
+**Note on middleware architecture:** The middleware explicitly skips `/api/` paths (`pathname.startsWith("/api/")`). This means API-route protection relies entirely on `requireAuth()` being called at the top of every handler. All implemented handlers do call it. Future handlers must follow this pattern.
 
 ---
 
-## Data Isolation Audit (IDOR Check)
+## Data Isolation (IDOR) — Exhaustive Route-by-Route Check
 
-### Can User A EVER See, Modify, or Delete User B's Data?
+### Method
 
-Every API route has been checked for `userId` scoping in database queries:
+For every API route, I traced the Prisma query to check whether `userId: auth.userId` appears in the `where` clause (reads) or `data` payload (creates).
 
-| Route | Method | userId in WHERE/data | IDOR Protected | Notes |
-|-------|--------|---------------------|----------------|-------|
-| `/api/clients` | GET | `userId: auth.userId` | PASS | |
-| `/api/clients` | POST | `userId: auth.userId` in create | PASS | |
-| `/api/clients/[id]` | GET | `id + userId` | PASS | |
-| `/api/clients/[id]` | PATCH | `id + userId` (updateMany) | PASS | Optimistic locking also scoped |
-| `/api/clients/[id]` | DELETE | `id + userId` (deleteMany) | PASS | Atomic check+delete |
-| `/api/clients/[id]/archive` | PATCH | `id + userId` (updateMany) | PASS | |
-| `/api/clients/[id]/summary` | GET | `id + userId` | PASS | Sub-queries also scoped |
-| `/api/projects` | GET | `userId: auth.userId` | PASS | |
-| `/api/projects` | POST | `userId + client ownership verified` | PASS | |
-| `/api/projects/[id]` | GET | `id + userId` | PASS | |
-| `/api/projects/[id]` | PATCH | `id + userId` (updateMany) | PASS | Client change also verified |
-| `/api/projects/[id]` | DELETE | `findFirst(id+userId)` then `delete(id)` | **WARN — H1** | TOCTOU race |
-| `/api/projects/[id]/tasks` | GET | Project ownership verified, tasks scoped | PASS | |
-| `/api/projects/[id]/tasks` | POST | Project ownership verified | PASS | |
-| `/api/tasks` | GET | `userId: auth.userId` | PASS | |
-| `/api/tasks/[id]` | GET | `id + userId` | PASS | |
-| `/api/tasks/[id]` | PATCH | `id + userId` (updateMany) | PASS | |
-| `/api/tasks/[id]` | DELETE | `findFirst(id+userId)` then `delete(id)` | **WARN — H1** | TOCTOU race |
-| `/api/tasks/[id]/position` | PATCH | `id + userId` (updateMany) | PASS | |
-| `/api/tasks/[id]/comments` | GET | Task ownership verified | PASS | |
-| `/api/tasks/[id]/comments` | POST | Task ownership verified | PASS | |
-| `/api/tasks/[id]/subtasks` | POST | Task ownership verified | PASS | |
-| `/api/tasks/[id]/time-entries` | GET | Task ownership + `userId` | PASS | |
-| `/api/tasks/[id]/time-entries` | POST | Task ownership verified | PASS | |
-| `/api/subtasks/[id]` | PATCH | Join: subtask → task → userId | PASS | |
-| `/api/subtasks/[id]` | DELETE | Join: subtask → task → userId | PASS | |
-| `/api/time-entries` | GET | `userId: auth.userId` | PASS | |
-| `/api/dashboard/stats` | GET | All queries scoped to userId | PASS | |
-| `/api/analytics` | GET | All queries scoped to userId | PASS | |
-| `/api/settings/account` | GET/PATCH | `auth.userId` | PASS | |
-| `/api/settings/change-password` | POST | `auth.userId` | PASS | |
-| `/api/settings/delete-account` | POST | `auth.userId` | PASS | |
+| Route | Method | userId in query? | IDOR safe? | Notes |
+| ----- | ------ | ---------------- | ---------- | ----- |
+| `/api/clients` | GET | `where: { userId: auth.userId }` | **PASS** | |
+| `/api/clients` | POST | `data: { userId: auth.userId }` | **PASS** | |
+| `/api/clients/[id]` | GET | `findFirst({ where: { id, userId } })` | **PASS** | |
+| `/api/clients/[id]` | PATCH | `updateMany({ where: { id, userId, updatedAt } })` | **PASS** | Atomic |
+| `/api/clients/[id]` | DELETE | `deleteMany({ where: { id, userId } })` | **PASS** | Atomic |
+| `/api/clients/[id]/archive` | PATCH | `updateMany({ where: { id, userId } })` | **PASS** | Atomic |
+| `/api/clients/[id]/summary` | GET | `findFirst({ where: { id, userId } })` + sub-queries scoped | **PASS** | |
+| `/api/projects` | GET | `where: { userId }` | **PASS** | |
+| `/api/projects` | POST | `data: { userId }` + client ownership verified | **PASS** | |
+| `/api/projects/[id]` | GET | `findFirst({ where: { id, userId } })` | **PASS** | |
+| `/api/projects/[id]` | PATCH | `updateMany({ where: { id, userId, updatedAt } })` | **PASS** | Client-change also verified |
+| `/api/projects/[id]` | DELETE | `findFirst` then `delete({ where: { id } })` | **FAIL — H-1** | TOCTOU — `delete` has no userId |
+| `/api/projects/[id]/tasks` | GET | Project ownership verified + tasks `where: { userId }` | **PASS** | |
+| `/api/projects/[id]/tasks` | POST | Project ownership verified + `data: { userId }` | **PASS** | |
+| `/api/tasks` | GET | `where: { userId }` | **PASS** | |
+| `/api/tasks/[id]` | GET | `findFirst({ where: { id, userId } })` | **PASS** | |
+| `/api/tasks/[id]` | PATCH | `updateMany({ where: { id, userId, updatedAt } })` | **PASS** | |
+| `/api/tasks/[id]` | DELETE | `findFirst` then `delete({ where: { id } })` | **FAIL — H-1** | TOCTOU — `delete` has no userId |
+| `/api/tasks/[id]/position` | PATCH | `updateMany({ where: { id, userId, updatedAt } })` | **PASS** | |
+| `/api/tasks/[id]/comments` | GET | Task ownership verified first | **PASS** | |
+| `/api/tasks/[id]/comments` | POST | Task ownership verified + `data: { userId }` | **PASS** | |
+| `/api/tasks/[id]/subtasks` | POST | Task ownership verified | **PASS** | |
+| `/api/tasks/[id]/time-entries` | GET | Task ownership + `where: { userId }` | **PASS** | |
+| `/api/tasks/[id]/time-entries` | POST | Task ownership + `data: { userId }` | **PASS** | |
+| `/api/subtasks/[id]` | PATCH | Join: subtask→task→userId | **PASS** | |
+| `/api/subtasks/[id]` | DELETE | Join: subtask→task→userId | **PASS** | |
+| `/api/time-entries` | GET | `where: { userId }` | **PASS** | |
+| `/api/dashboard/stats` | GET | All queries `where: { userId }` | **PASS** | |
+| `/api/analytics` | GET | All queries `where: { userId }` | **PASS** | |
+| `/api/settings/account` | GET | `where: { id: auth.userId }` | **PASS** | |
+| `/api/settings/account` | PATCH | `where: { id: auth.userId }` | **PASS** | |
+| `/api/settings/change-password` | POST | `where: { id: auth.userId }` | **PASS** | |
+| `/api/settings/delete-account` | POST | `where: { id: auth.userId }` | **PASS** | |
 
-**URL Manipulation Test Results:**
-- Changing `[id]` params in client/project/task URLs → 404 (not 403), preventing existence enumeration
-- All list endpoints filter by `userId` → no cross-user data in listings
-- Cursor-based pagination cursors (client-provided IDs) are validated by Prisma's cursor mechanism, scoped by the `where` clause
+**URL manipulation test:** Guessing or changing `[id]` parameters in routes returns 404 (not 403), which prevents existence-enumeration of other users' resource IDs.
 
 ---
 
 ## Input Validation Audit
 
-### Server-Side Validation Coverage
+### Server-side validation coverage
 
-| Endpoint | Validation Library | Schema Exists | Max Length Enforced | Type Checked |
-|----------|-------------------|---------------|--------------------|----|
-| `POST /api/auth/register` | Zod | Yes | name: no max, email: yes, password: yes | PASS |
-| `POST /api/auth/login` | Zod | Yes | — | PASS |
-| `POST /api/clients` | Zod | Yes | name: 200, email: 254, phone: 50, address: 1000, notes: 50000 | PASS |
-| `PATCH /api/clients/[id]` | Zod | Yes | Same as create | PASS |
-| `POST /api/projects` | Zod | Yes | name: 200, desc: 2000 | PASS |
-| `PATCH /api/projects/[id]` | Zod | Yes | Same | PASS |
-| `POST /api/projects/[id]/tasks` | Zod | Yes | title: 500, desc: 10000 | PASS |
-| `PATCH /api/tasks/[id]` | Zod | Yes | Same | PASS |
-| `POST /api/tasks/[id]/comments` | Zod | Yes | content: 5000 | PASS |
-| `POST /api/tasks/[id]/subtasks` | Zod | Yes | title: 500 | PASS |
-| `POST /api/tasks/[id]/time-entries` | Zod | Yes | duration: 1-1440min, desc: 2000 | PASS |
-| `PATCH /api/settings/account` | Zod | Yes | name: 100, email: valid | PASS |
-| `POST /api/settings/change-password` | Zod | Yes | Complexity rules enforced | PASS |
-| `POST /api/settings/delete-account` | Zod | Yes | password: min 1 | PASS |
+Every write endpoint validates via Zod schemas before touching the database.
 
-**Missing validation:**
-- `POST /api/auth/register`: No max length on `name` field in the Zod schema (Prisma has no column limit either). A malicious user could submit a megabyte-long name. **Severity: Low.**
+| Endpoint | Schema | Max-length enforced? | Notes |
+| -------- | ------ | -------------------- | ----- |
+| `POST /api/auth/register` | `registerSchema` | name: **no max**, email: Zod email, password: 8+ with complexity | Missing max on `name` |
+| `POST /api/auth/login` | `loginSchema` | email: Zod email, password: min 1 | OK |
+| `POST /api/clients` | `createClientSchema` | name: 200, contactName: 200, email: 254, phone: 50, address: 1000, notes: 50000 | OK |
+| `PATCH /api/clients/[id]` | `updateClientSchema` | Same + updatedAt | OK |
+| `PATCH /api/clients/[id]/archive` | `archiveClientSchema` | boolean | OK |
+| `POST /api/projects` | `createProjectSchema` | name: 200, desc: 2000, rates: max 99999999.99, budgetHours: max 99999 | OK |
+| `PATCH /api/projects/[id]` | `updateProjectSchema` | Same + updatedAt | OK |
+| `POST /api/projects/[id]/tasks` | `createTaskSchema` | title: 500, desc: 10000 | OK |
+| `PATCH /api/tasks/[id]` | `updateTaskSchema` | Same + updatedAt | OK |
+| `PATCH /api/tasks/[id]/position` | `updateTaskPositionSchema` | status: enum, position: int ≥ 0, updatedAt | OK |
+| `POST /api/tasks/[id]/comments` | `createCommentSchema` | content: 5000 | OK |
+| `POST /api/tasks/[id]/subtasks` | `createSubtaskSchema` | title: 500 | OK |
+| `PATCH /api/subtasks/[id]` | `updateSubtaskSchema` | title: 500 | OK |
+| `POST /api/tasks/[id]/time-entries` | `createTimeEntrySchema` | duration: 1-1440, desc: 2000 | OK |
+| `PATCH /api/settings/account` | inline Zod | name: 100, email: Zod email | OK |
+| `POST /api/settings/change-password` | `changePasswordSchema` | complexity rules + confirm match | OK |
+| `POST /api/settings/delete-account` | `deleteSchema` | password: min 1 | OK |
+
+**Gap:** `registerSchema` has no `.max()` on `name`. An attacker could submit a multi-megabyte name. Low severity because Prisma/Postgres will accept it but it wastes memory.
 
 ### SQL Injection
 
-Prisma ORM parameterizes all queries. No raw SQL is used except `SELECT 1` in the health check. **No SQL injection risk.**
+All queries use Prisma's parameterized query builder. The only raw SQL is `SELECT 1` in the health check (no user input). **No injection risk.**
 
 ### XSS
 
-- React auto-escapes rendered content by default
-- No `dangerouslySetInnerHTML` usage found
-- CSP headers configured (though weakened by `unsafe-inline` — see M6)
-- Comment content, task descriptions, and notes are stored as plain text and rendered as text
-- **No XSS risk in current implementation**
+- React auto-escapes all rendered content.
+- `dangerouslySetInnerHTML` is never used in any component.
+- CSP headers are configured (weakened by `unsafe-inline` — M-2).
+- All user content (comments, descriptions, notes) is stored and rendered as plain text.
+- **No XSS risk in current implementation.**
 
-### Error Messages
+### Error messages — information leakage
 
-| Endpoint | Error Detail Level | Status |
-|----------|--------------------|--------|
-| Login (wrong creds) | "Invalid email or password." | PASS — no enumeration |
-| Login (server error) | **Leaks `err.message`** | **FAIL — C2** |
-| Register (server error) | "Registration failed. Please try again." | PASS |
-| Client CRUD (server error) | Generic message | PASS |
-| Project/Task/Settings | Generic message or Zod field errors | PASS |
-| Zod validation errors | Field-level messages (expected for UX) | PASS |
+| Endpoint | 500 error message | Safe? |
+| -------- | ----------------- | ----- |
+| `POST /api/auth/login` | `"Login failed: ${err.message}"` | **NO — C-2** |
+| `POST /api/auth/register` | `"Registration failed. Please try again."` | Yes |
+| Client CRUD | `"Something went wrong on our end…"` | Yes |
+| Project/Task CRUD | Generic or Zod field errors | Yes |
+| Settings routes | `"Failed to load/update account settings."` | Yes |
+| Analytics | `"Failed to load analytics."` | Yes |
+| Time entries | `"Something went wrong on our end."` | Yes |
+| Tasks list | `"Something went wrong on our end."` | Yes |
+
+### Password hash exposure
+
+The `GET /api/settings/account` handler uses explicit `select` that returns only `id, name, email, timezone, emailVerified, createdAt`. `passwordHash` is never included. No other route returns user data to the client. **PASS.**
 
 ---
 
 ## Infrastructure Audit
 
-### Security Headers (netlify.toml)
+### Security headers (netlify.toml)
 
 | Header | Value | Status |
-|--------|-------|--------|
+| ------ | ----- | ------ |
 | `X-Frame-Options` | `DENY` | PASS |
 | `X-Content-Type-Options` | `nosniff` | PASS |
 | `X-XSS-Protection` | `1; mode=block` | PASS (deprecated but harmless) |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | PASS |
 | `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | PASS |
 | `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` | PASS |
-| `Content-Security-Policy` | See M6 | WARN — `unsafe-eval` and `unsafe-inline` |
+| `Content-Security-Policy` | `script-src 'self' 'unsafe-eval' 'unsafe-inline'` | **WARN — M-2** |
 
-**Missing headers:**
-- `Cross-Origin-Opener-Policy: same-origin` (prevents cross-origin window access)
-- `Cross-Origin-Embedder-Policy: require-corp` (prevents speculative execution attacks)
+**Missing:** `Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy`.
 
-### Secrets in Committed Code
+### Secrets in committed code
 
-| File | Secret Type | Status |
-|------|------------|--------|
+| File | Content | Status |
+| ---- | ------- | ------ |
 | `.env.example` | Placeholder values only | PASS |
 | `.gitignore` | `.env` and `.env*.local` excluded | PASS |
-| `prisma/seed.ts` | Hardcoded password `password123` | WARN — see M5 |
-| `src/lib/db.ts` | Fallback DB URL `postgresql://taskflow:taskflow@localhost:5432/taskflow` | WARN — see L1 |
-| Source code | No API keys, tokens, or secrets found | PASS |
+| `prisma/seed.ts` | Hardcoded password `password123` | WARN — M-5 |
+| `src/lib/db.ts` | Fallback DB URL `postgresql://taskflow:taskflow@localhost:5432/taskflow` | WARN — L-1 |
+| All source files | No API keys, tokens, or secrets | PASS |
 
-### Password Hashing
+### SESSION_SECRET declared in .env.example but never used in code
+
+The `.env.example` defines `SESSION_SECRET` and the IMPLEMENTATION-PLAN.md describes using it for HMAC-signing session cookies. However, the actual implementation uses SHA-256 hashing of the token (not HMAC signing). The `SESSION_SECRET` env var is never read in any source file. This is technically acceptable — the session token is a random `nanoid(32)`, hashed with SHA-256, and looked up by hash. The cookie value itself is the raw token; there's no signing step. Security depends on the token's entropy (192 bits), which is sufficient.
+
+### Password hashing
 
 | Aspect | Implementation | Status |
-|--------|---------------|--------|
+| ------ | -------------- | ------ |
 | Algorithm | bcrypt (bcryptjs) | PASS |
 | Cost factor | 12 rounds | PASS |
-| Storage | `passwordHash` column, never returned in API responses | PASS |
+| Storage | `passwordHash` column, never in API responses | PASS |
 
 ---
 
 ## Account Management Audit
 
-### Password Change (`POST /api/settings/change-password`)
+### Password change (`POST /api/settings/change-password`)
 
-| Check | Status |
-|-------|--------|
-| Requires current password | PASS |
-| Validates new password complexity (8+ chars, upper, lower, digit) | PASS |
-| Confirms new password matches | PASS |
-| Hashes with bcrypt cost 12 | PASS |
-| Invalidates all other sessions | PASS |
-| Keeps current session valid | PASS |
+| Check | Implemented? |
+| ----- | ------------ |
+| Requires current password | Yes — `bcrypt.compare(currentPassword, user.passwordHash)` |
+| Validates new password complexity | Yes — 8+ chars, uppercase, lowercase, digit |
+| Confirms new === confirm | Yes — Zod `.refine()` |
+| Hashes with bcrypt cost 12 | Yes |
+| Invalidates all other sessions | Yes — `deleteMany({ where: { userId, id: { not: sessionId } } })` |
+| Keeps current session valid | Yes |
 
-### Account Deletion (`POST /api/settings/delete-account`)
+**Verdict: PASS**
 
-| Check | Status |
-|-------|--------|
-| Requires password re-entry | PASS |
-| Sets `scheduledDeletionAt` | PASS |
-| Invalidates all sessions | PASS |
-| Clears session cookie | PASS |
-| Actually deletes data after 30 days | **FAIL — H6** (no cleanup job exists) |
-| Blocks login after deletion scheduled | **FAIL — H6** (no check in auth) |
-| Cascading delete configured in schema | PASS (all FKs have `onDelete: Cascade`) |
+### Account deletion (`POST /api/settings/delete-account`)
 
-### Data Cascade Verification (Prisma Schema)
+| Check | Implemented? |
+| ----- | ------------ |
+| Requires password | Yes |
+| Sets `scheduledDeletionAt` | Yes |
+| Destroys all sessions | Yes |
+| Clears cookie | Yes |
+| Blocks re-login | **No — H-4** |
+| Background job hard-deletes after 30 days | **No — not implemented** |
+| Cascade configured in Prisma schema | Yes — all FKs have `onDelete: Cascade` |
 
-| Parent | Cascade Target | onDelete | Status |
-|--------|---------------|----------|--------|
-| User | Sessions | Cascade | PASS |
-| User | PasswordResetTokens | Cascade | PASS |
-| User | EmailVerificationTokens | Cascade | PASS |
-| User | Clients | Cascade | PASS |
-| User | Projects | Cascade | PASS |
-| User | Tasks | Cascade | PASS |
-| User | TimeEntries | Cascade | PASS |
-| User | Comments | Cascade | PASS |
-| Client | Projects | Cascade | PASS |
-| Project | Tasks | Cascade | PASS |
-| Project | TimeEntries | Cascade | PASS |
-| Task | Subtasks | Cascade | PASS |
-| Task | Comments | Cascade | PASS |
-| Task | TimeEntries | **SetNull** | PASS — intentional (preserves time data) |
+### Cascade completeness (Prisma schema)
 
----
+When a `User` is deleted, Prisma cascades to:
 
-## Recommendations — Prioritized Fix List
+| Entity | onDelete | Effect |
+| ------ | -------- | ------ |
+| Session | Cascade | All sessions deleted |
+| PasswordResetToken | Cascade | All tokens deleted |
+| EmailVerificationToken | Cascade | All tokens deleted |
+| Client | Cascade | → also cascades to Project → Task, TimeEntry, Subtask, Comment |
+| Project | Cascade | → also cascades to Task, TimeEntry |
+| Task | Cascade | → Subtask (Cascade), Comment (Cascade), TimeEntry (SetNull — preserves) |
+| TimeEntry | Cascade | Deleted |
+| Comment | Cascade | Deleted |
 
-### Must Fix Before Production (Critical + High)
-
-| # | Severity | Issue | Fix |
-|---|----------|-------|-----|
-| C1 | **Critical** | Dev auth bypass in `auth.ts` and `middleware.ts` | Remove dev fallbacks; use real auth in all environments |
-| C2 | **Critical** | Login error leaks `err.message` | Return generic error; log details server-side only |
-| C3 | **Critical** | No rate limiting on any endpoint | Install Upstash; implement per-endpoint rate limits |
-| C4 | **Critical** | No CSRF Origin validation | Add Origin header check on state-changing routes |
-| H1 | **High** | TOCTOU in project/task DELETE | Use `deleteMany` with `userId` in where clause |
-| H2 | **High** | Email change without password | Require current password when changing email |
-| H3 | **High** | Login timing attack | Always run bcrypt.compare (dummy hash on user-not-found) |
-| H5 | **High** | Missing userId on time entry aggregation | Add `userId` filter to all aggregation queries |
-| H6 | **High** | Account deletion incomplete | Implement cleanup job; block login for deleted users |
-
-### Should Fix Before GA (Medium)
-
-| # | Severity | Issue | Fix |
-|---|----------|-------|-----|
-| M2 | **Medium** | Cookie not Secure outside production | Use `secure: true` for all non-localhost environments |
-| M3 | **Medium** | No Origin header validation | Add to middleware or route wrapper |
-| M4 | **Medium** | next.config.mjs empty | Add security headers for non-Netlify deployments |
-| M5 | **Medium** | Seed script weak password | Guard against production execution |
-| M6 | **Medium** | CSP unsafe-eval/unsafe-inline | Use nonce-based CSP; remove unsafe-eval |
-| M7 | **Medium** | No session count limit | Cap at 10 sessions per user |
-| H4 | **Medium** | Registration email enumeration + no rate limit | Fix by implementing C3 |
-
-### Nice to Have (Low)
-
-| # | Severity | Issue | Fix |
-|---|----------|-------|-----|
-| L1 | **Low** | DB URL fallback on NODE_ENV unset | Use explicit `=== "development"` check |
-| L2 | **Low** | console.error logs full errors | Use structured logging; redact sensitive fields |
-| L3 | **Low** | No Referrer-Policy on API responses | Set in middleware |
-| L4 | **Low** | No rate limit on health endpoint | Add basic per-IP throttle |
+**The cascade is complete.** The only orphan case is `TimeEntry.taskId → SetNull` when a Task is deleted (time entries are preserved with null taskId), which is intentional.
 
 ---
 
-## What the Previous Plan-Level Audit Got Right
+## Prioritized Fix List
 
-The previous SECURITY-AUDIT.md (which audited the plan documents) identified 19 issues. Here's how the implementation addressed them:
+### Before Production (Critical + High)
 
-| Previous Issue | Status in Code |
-|----------------|---------------|
-| #1 — Session cookie signing / HMAC | **Resolved differently** — tokens hashed with SHA-256, not HMAC-signed. Secure because raw token is never stored. |
-| #2 — Password reset token in URL | **Not yet implemented** — no forgot/reset password routes exist yet |
-| #3 — GDPR export re-auth | **Not yet implemented** — no export endpoint exists yet |
-| #4 — Account deletion requires password | **Implemented** — password required |
-| #5 — Store only hash of session ID | **Implemented** — SHA-256 hash stored |
-| #6 — Notification ownership check | **Not yet implemented** — no notification routes exist yet |
-| #7 — Subtask ownership via parent join | **Implemented** — joins through task to verify userId |
-| #8 — Portal token generation | **Not yet implemented** — no portal exists yet |
-| #9 — Email change re-auth | **NOT implemented** — still missing (see H2) |
-| #16 — Bcrypt timing attack | **NOT implemented** — still vulnerable (see H3) |
-| #17 — CSRF via SameSite + Origin | **Partially implemented** — SameSite=Strict only, no Origin check (see C4) |
+| # | Sev | Issue | Fix |
+| - | --- | ----- | --- |
+| C-1 | Critical | Dev auth bypass | Delete dev fallbacks in `auth.ts` and `middleware.ts` |
+| C-2 | Critical | Login error leaks `err.message` | Return generic message |
+| C-3 | Critical | No rate limiting | Add Upstash rate limiter |
+| C-4 | Critical | No CSRF Origin check | Add Origin header validation |
+| H-1 | High | TOCTOU in project/task delete | Use `deleteMany` with userId |
+| H-2 | High | Email change without password | Require password when changing email |
+| H-3 | High | Login timing oracle | Always run bcrypt.compare with dummy hash |
+| H-4 | High | Deleted users can re-login | Block login when `scheduledDeletionAt` is set |
+| H-5 | High | Missing userId on time aggregations | Add userId to every aggregation where clause |
+
+### Before GA (Medium)
+
+| # | Sev | Issue | Fix |
+| - | --- | ----- | --- |
+| M-1 | Medium | Cookie not Secure outside prod | `secure: NODE_ENV !== "development"` |
+| M-2 | Medium | CSP unsafe-eval/unsafe-inline | Nonce-based CSP |
+| M-3 | Medium | No session cap per user | Limit to 10 sessions |
+| M-4 | Medium | Registration enumeration + no throttle | Fix via C-3 |
+| M-5 | Medium | Seed script runs in prod | Guard with NODE_ENV check |
+| M-6 | Medium | No Origin validation | Fix via C-4 |
+| M-7 | Medium | next.config.mjs empty | Add security headers |
+
+### Nice-to-Have (Low)
+
+| # | Sev | Issue | Fix |
+| - | --- | ----- | --- |
+| L-1 | Low | DB URL fallback on NODE_ENV unset | Use `=== "development"` |
+| L-2 | Low | console.error logs full errors | Structured logging |
+| L-3 | Low | No Referrer-Policy on API | Set in middleware |
+| L-4 | Low | Health endpoint unthrottled | Add per-IP rate limit |
 
 ---
 
-*This audit was performed against the codebase as of 2026-03-02. All findings reference specific file paths and line numbers. Re-audit should be performed after fixes are applied and before any new feature phase is completed.*
+*Audit complete. Every API route, middleware path, database query, validation schema, configuration file, and Prisma model was read in full. Re-audit after fixes and before each new feature phase.*
