@@ -688,4 +688,229 @@ When a `User` is deleted, Prisma cascades to:
 
 ---
 
-*Audit complete. Every API route, middleware path, database query, validation schema, configuration file, and Prisma model was read in full. Re-audit after fixes and before each new feature phase.*
+---
+
+## Red-Team Pass — Adversarial Findings
+
+> A second pass through every file with an attacker mindset.
+> These are issues the structured audit missed or under-weighted.
+
+### RT-1 (High). Subtask PATCH and DELETE have the same TOCTOU as H-1
+
+**Files:** `src/app/api/subtasks/[id]/route.ts:46-48`, `src/app/api/subtasks/[id]/route.ts:73`
+
+H-1 flagged project and task DELETE. But subtask PATCH and DELETE have the exact same pattern and were marked "PASS" in the IDOR table:
+
+```typescript
+// Step 1: check ownership via join
+const subtask = await db.subtask.findFirst({
+  where: { id: params.id },
+  include: { task: { select: { userId: true } } },
+});
+if (!subtask || subtask.task.userId !== auth.userId) return 404;
+
+// Step 2: write WITHOUT any ownership in the where clause
+await db.subtask.update({ where: { id: params.id }, data: updatePayload });
+await db.subtask.delete({ where: { id: params.id } });
+```
+
+Between the check and the write, the subtask could theoretically be reassigned (e.g., if its parent task were moved to a different project via a concurrent request). The race window is tiny and requires an unlikely concurrent mutation, but the principle is violated.
+
+**Fix:** Wrap the check+write in a `db.$transaction()`:
+```typescript
+await db.$transaction(async (tx) => {
+  const subtask = await tx.subtask.findFirst({
+    where: { id: params.id },
+    include: { task: { select: { userId: true } } },
+  });
+  if (!subtask || subtask.task.userId !== auth.userId) throw new Error("not found");
+  await tx.subtask.delete({ where: { id: params.id } });
+});
+```
+
+---
+
+### RT-2 (High). Registration race condition — duplicate email returns raw 500
+
+**File:** `src/app/api/auth/register/route.ts:32-54`
+
+The handler checks email uniqueness with `findFirst`, then creates the user. These are two separate queries — not atomic.
+
+```
+Request A: findFirst("alice@test.com") → null     ← no user exists
+Request B: findFirst("alice@test.com") → null     ← still no user (A hasn't created yet)
+Request A: db.user.create("alice@test.com") → OK
+Request B: db.user.create("alice@test.com") → Prisma P2002 unique constraint error
+```
+
+The `P2002` error is not caught. It falls into the generic catch block and returns:
+
+```json
+{ "error": "Registration failed. Please try again." }
+```
+
+The user sees a confusing error instead of "email already exists." More importantly, the `console.error` on line 85 logs `err.message`, which for P2002 looks like:
+
+```
+Unique constraint failed on the fields: (`email`)
+```
+
+This isn't returned to the client (the response is generic), but it confirms that **no Prisma error code is handled anywhere in the codebase**. Every unique-constraint, foreign-key, or not-found error falls through to a generic 500.
+
+**Fix:** Catch `P2002` errors in registration (and ideally in a shared error handler):
+```typescript
+import { Prisma } from "@prisma/client";
+
+} catch (err) {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+    return NextResponse.json(
+      { error: "An account with this email already exists." },
+      { status: 409 }
+    );
+  }
+  // generic 500
+}
+```
+
+---
+
+### RT-3 (Medium). `X-Forwarded-For` is attacker-controlled — future rate-limit bypass
+
+**Files:** `src/app/api/auth/login/route.ts:61`, `src/app/api/auth/register/route.ts:66`
+
+```typescript
+ipAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null,
+```
+
+Currently this is only stored as session metadata (no security decisions depend on it). But when rate limiting is implemented (C-3), the natural instinct is to key IP-based rate limits on this same header. **An attacker can rotate `X-Forwarded-For` on every request to get unlimited attempts.**
+
+On Netlify, the real client IP is in `x-nf-client-connection-ip`. On Cloudflare, it's `cf-connecting-ip`. On Vercel, `x-real-ip`. Using the raw `X-Forwarded-For` without trusting only the last hop from a known proxy is trivially spoofable.
+
+**Fix:** When implementing rate limiting, use the platform's trusted IP header — NOT `x-forwarded-for` directly. Document which header to use per deployment target.
+
+---
+
+### RT-4 (Medium). Relation includes on task detail fetch child records without userId
+
+**File:** `src/app/api/tasks/[id]/route.ts:18-28`
+
+The task is correctly fetched with `userId` in the `where` clause. But the `include` for child records has no userId filter:
+
+```typescript
+include: {
+  subtasks: { orderBy: { position: "asc" } },       // no userId filter
+  comments: {                                         // no userId filter
+    include: { user: { select: { id: true, name: true } } },
+    orderBy: { createdAt: "asc" },
+  },
+  timeEntries: { orderBy: { startTime: "desc" } },   // no userId filter
+  project: { select: { id: true, name: true, hourlyRate: true, billingType: true } },
+}
+```
+
+H-5 flagged missing `userId` on time-entry *aggregation* queries. This is different: the `include` clause fetches **all child records for the task regardless of who created them**. In the current single-user data model, all children belong to the same user. But this is a latent IDOR — if shared-project features are ever added, `GET /api/tasks/[id]` would return other users' comments, time entries, and subtasks.
+
+The same pattern appears in `GET /api/tasks/[id]/comments` (line 26-32): `db.comment.findMany({ where: { taskId } })` — no `userId`.
+
+**Fix:** Add `userId` filters to relation includes where the child entity has a `userId` column:
+```typescript
+timeEntries: { where: { userId: auth.userId }, orderBy: { startTime: "desc" } },
+comments: { where: { userId: auth.userId }, ... },
+```
+
+Subtasks don't have a `userId` column, so they must be scoped through the parent task (which is already scoped).
+
+---
+
+### RT-5 (Medium). Password change allows no-op — session-invalidation as a weapon
+
+**File:** `src/app/api/settings/change-password/route.ts:7-24`
+
+The Zod schema validates `newPassword` for complexity and checks `newPassword === confirmPassword`, but never checks `newPassword !== currentPassword`. An attacker who knows the victim's password can:
+
+1. Log in
+2. "Change" the password to the same value
+3. All OTHER sessions are invalidated (`deleteMany({ id: { not: sessionId } })`)
+4. The victim is logged out everywhere while the attacker keeps their session
+
+This is a nuisance/denial-of-service attack against specific users. The attacker doesn't gain new access (they already had the password), but they can repeatedly kick the legitimate user off all their devices.
+
+**Fix:** Add a refine:
+```typescript
+.refine(data => data.newPassword !== data.currentPassword, {
+  message: "New password must be different from current password.",
+  path: ["newPassword"],
+})
+```
+
+---
+
+### RT-6 (Medium). Middleware auth bypass via dot in URL path
+
+**File:** `src/middleware.ts:29`
+
+```typescript
+pathname.includes(".")
+```
+
+Any URL with a dot anywhere in the path skips the middleware entirely. The intent is to exclude static files (`.css`, `.js`, `.ico`). But this is an overly broad check. If a future route segment ever contains a dot — e.g., `/projects/v2.0/overview` — the middleware's auth redirect would be silently skipped.
+
+Currently, no route segments contain dots, so this isn't exploitable today. But it's a fragile pattern that violates the principle of secure-by-default. The `config.matcher` regex at line 64 already excludes `_next/static`, `_next/image`, and `favicon.ico` — the `includes(".")` check is redundant defense that could become a hole.
+
+**Fix:** Remove the `pathname.includes(".")` check. The matcher regex and the explicit `pathname.startsWith` checks are sufficient. If static-file exclusion is needed, check for a file extension at the end: `pathname.match(/\.\w+$/)`.
+
+---
+
+### RT-7 (Low). `GET /api/clients/[id]` returns full Prisma model — no field selection
+
+**File:** `src/app/api/clients/[id]/route.ts:17-19`
+
+```typescript
+const client = await db.client.findFirst({
+  where: { id: params.id, userId: auth.userId },
+  // ← no select clause
+});
+return NextResponse.json(client);
+```
+
+This returns every column on the Client model to the API response, including `userId` (the internal foreign key). Compare with `GET /api/settings/account` which uses explicit `select` to exclude `passwordHash`.
+
+Currently the Client model has no secret fields, so this is not exploitable. But if a field like `stripeCustomerId`, `apiKey`, or `internalNotes` is ever added to the model, it would automatically be exposed to the API consumer.
+
+The same pattern appears in:
+- `PATCH /api/clients/[id]` response (line 124-126)
+- `PATCH /api/clients/[id]/archive` response (line 48-50)
+- `GET /api/projects/[id]` response (line 16-23)
+- `PATCH /api/projects/[id]` response (line 161-168)
+
+**Fix:** Add explicit `select` clauses to all responses, or create a `sanitize()` helper per model that strips internal fields before serialization.
+
+---
+
+### Updated Summary
+
+| Severity | Prior count | New findings | Total |
+| -------- | ----------- | ------------ | ----- |
+| Critical | 4 | 0 | 4 |
+| High | 5 | +2 (RT-1, RT-2) | 7 |
+| Medium | 7 | +4 (RT-3, RT-4, RT-5, RT-6) | 11 |
+| Low | 4 | +1 (RT-7) | 5 |
+| **Total** | **20** | **+7** | **27** |
+
+---
+
+### Updated Fix List — Red-Team Additions
+
+| # | Sev | Issue | Fix |
+| - | --- | ----- | --- |
+| RT-1 | High | Subtask TOCTOU (same class as H-1) | Wrap check+write in `$transaction` |
+| RT-2 | High | Registration race → generic 500 on P2002 | Catch Prisma P2002, return 409 |
+| RT-3 | Medium | `X-Forwarded-For` spoofable for rate limits | Use platform trusted-IP header |
+| RT-4 | Medium | Relation includes unscoped by userId | Add userId to `include` where clauses |
+| RT-5 | Medium | Password change allows same password | Add `new !== current` refine |
+| RT-6 | Medium | Middleware dot-bypass pattern fragile | Remove `pathname.includes(".")`, rely on matcher |
+| RT-7 | Low | Client/project GETs return full model | Add explicit `select` to all responses |
+
+---
+
+*Red-team pass complete. 27 total findings. Re-audit after fixes.*
