@@ -65,18 +65,18 @@ export function Sidebar() {
     <>
       {/* Desktop Sidebar */}
       <aside
-        className={`hidden lg:flex flex-col fixed left-0 top-0 h-screen bg-white border-r border-gray-200 z-30 transition-all duration-200 ${
+        className={`hidden lg:flex flex-col fixed left-0 top-0 h-screen bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 z-30 transition-all duration-200 ${
           collapsed ? "w-16" : "w-60"
         }`}
       >
         {/* Logo */}
-        <div className="flex items-center gap-2 px-4 h-16 border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-center gap-2 px-4 h-16 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <Link href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center flex-shrink-0">
               <span className="text-white font-bold text-sm">TF</span>
             </div>
             {!collapsed && (
-              <span className="text-lg font-bold text-gray-900">TaskFlow</span>
+              <span className="text-lg font-bold text-gray-900 dark:text-gray-100">TaskFlow</span>
             )}
           </Link>
         </div>
@@ -92,8 +92,8 @@ export function Sidebar() {
                 href={item.href}
                 className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                   isActive
-                    ? "bg-primary-50 text-primary-700"
-                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    ? "bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                    : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100"
                 }`}
                 title={collapsed ? item.label : undefined}
               >
@@ -106,7 +106,7 @@ export function Sidebar() {
 
         {/* Bottom Section */}
         <div className="px-3 pb-4 space-y-1 flex-shrink-0">
-          <div className="border-t border-gray-200 mb-3" />
+          <div className="border-t border-gray-200 dark:border-gray-700 mb-3" />
 
           {bottomItems.map((item) => {
             const Icon = item.icon;
@@ -117,8 +117,8 @@ export function Sidebar() {
                 href={item.href}
                 className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                   isActive
-                    ? "bg-primary-50 text-primary-700"
-                    : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    ? "bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                    : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100"
                 }`}
                 title={collapsed ? item.label : undefined}
               >
@@ -132,7 +132,7 @@ export function Sidebar() {
           <div className="relative">
             <button
               onClick={() => setShowNotifications(!showNotifications)}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
               title={collapsed ? "Notifications" : undefined}
             >
               <div className="relative flex-shrink-0">
@@ -238,7 +238,7 @@ export function Sidebar() {
       </aside>
 
       {/* Mobile Bottom Navigation — per Style Guide 2.6: Home, Tasks, Timer, Invoices, More */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-30 pb-[env(safe-area-inset-bottom)]">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 z-30 pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-center justify-around h-14">
           {mobileNavItems.map((item) => {
             const Icon = item.icon;
@@ -321,12 +321,12 @@ export function MobileHeader() {
 
   return (
     <>
-      <header className="lg:hidden sticky top-0 z-20 bg-white border-b border-gray-200 px-4 h-14 flex items-center justify-between">
+      <header className="lg:hidden sticky top-0 z-20 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-primary-500 rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-xs">TF</span>
           </div>
-          <span className="text-base font-bold text-gray-900">TaskFlow</span>
+          <span className="text-base font-bold text-gray-900 dark:text-gray-100">TaskFlow</span>
         </div>
         <div className="flex items-center gap-1">
           <Link href="/tasks" className="p-2 text-gray-400 hover:text-gray-600">

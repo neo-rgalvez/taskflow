@@ -660,7 +660,7 @@ function DangerZoneTab({ onDeleted }: { onDeleted: () => void }) {
                 entries, and invoices.
               </p>
             </div>
-            <button className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 flex-shrink-0">
+            <button className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors flex-shrink-0">
               Export
             </button>
           </div>
@@ -917,7 +917,7 @@ function NotificationsTab() {
         </div>
 
         <div className="flex justify-end pt-4">
-          <button className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600">
+          <button className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 transition-colors">
             Save Preferences
           </button>
         </div>
@@ -1045,7 +1045,7 @@ function BusinessTab() {
         </div>
 
         <div className="flex justify-end pt-4">
-          <button className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600">
+          <button className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 transition-colors">
             Save Business Profile
           </button>
         </div>
