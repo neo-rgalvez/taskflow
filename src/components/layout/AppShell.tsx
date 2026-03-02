@@ -42,7 +42,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gray-50">
       <Sidebar />
       <MobileHeader />
-      <main className="lg:pl-60 pb-28 lg:pb-14">
+      <main id="main-content" className="lg:pl-60 pb-28 lg:pb-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           {children}
         </div>

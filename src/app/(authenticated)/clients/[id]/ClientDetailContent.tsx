@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatDuration } from "@/lib/format";
 import {
   ArrowLeft,
   Mail,
@@ -40,6 +40,25 @@ interface Client {
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+interface ClientSummary {
+  activeProjectCount: number;
+  totalProjects: number;
+  draftInvoiceCount: number;
+  outstandingInvoiceAmount: number;
+  totalMinutes: number;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  status: string;
+  billingType: string;
+  hourlyRate: string | null;
+  budgetHours: number | null;
+  deadline: string | null;
+  client: Client;
 }
 
 type Tab = "projects" | "invoices" | "activity";
@@ -78,6 +97,11 @@ export default function ClientDetailContent({ id }: { id: string }) {
 
   // Tab state
   const [activeTab, setActiveTab] = useState<Tab>("projects");
+
+  // Summary & projects
+  const [summary, setSummary] = useState<ClientSummary | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
 
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -132,6 +156,26 @@ export default function ClientDetailContent({ id }: { id: string }) {
   useEffect(() => {
     fetchClient();
   }, [fetchClient]);
+
+  // Fetch summary + projects
+  const fetchSummaryAndProjects = useCallback(async () => {
+    setProjectsLoading(true);
+    const [summaryResult, projectsResult] = await Promise.all([
+      apiFetch<ClientSummary>(`/api/clients/${id}/summary`),
+      apiFetch<{ data: Project[]; totalCount: number }>(`/api/projects?clientId=${id}`),
+    ]);
+    if (summaryResult.data) {
+      setSummary(summaryResult.data);
+    }
+    if (projectsResult.data) {
+      setProjects(projectsResult.data.data);
+    }
+    setProjectsLoading(false);
+  }, [id]);
+
+  useEffect(() => {
+    fetchSummaryAndProjects();
+  }, [fetchSummaryAndProjects]);
 
   // Edit
   function openEditModal() {
@@ -480,13 +524,18 @@ export default function ClientDetailContent({ id }: { id: string }) {
           <div>
             <p className="text-xs text-gray-500">Total Hours Tracked</p>
             <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">
-              0h
+              {formatDuration(summary?.totalMinutes ?? 0)}
             </p>
           </div>
           <div>
             <p className="text-xs text-gray-500">Total Revenue</p>
             <p className="text-xl font-bold font-mono text-gray-900 mt-0.5">
-              $0.00
+              {formatCurrency(
+                ((summary?.totalMinutes ?? 0) / 60) *
+                  (client.defaultHourlyRate
+                    ? parseFloat(client.defaultHourlyRate)
+                    : 0)
+              )}
             </p>
           </div>
           <div>
@@ -529,14 +578,74 @@ export default function ClientDetailContent({ id }: { id: string }) {
         })}
       </div>
 
-      {/* Tab Content — Projects, Invoices, Activity not yet connected to real data */}
+      {/* Tab Content */}
       {activeTab === "projects" && (
-        <EmptyState
-          icon="projects"
-          headline="No projects for this client"
-          description="Create a new project to start tracking work for this client."
-          ctaLabel="+ Create Project"
-        />
+        <>
+          {projectsLoading ? (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 py-3">
+                  <Skeleton className="h-5 w-48 rounded" />
+                  <Skeleton className="h-5 w-20 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : projects.length === 0 ? (
+            <EmptyState
+              icon="projects"
+              headline="No projects for this client"
+              description="Create a new project to start tracking work for this client."
+              ctaLabel="+ Add Project"
+              ctaHref="/projects"
+            />
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700">
+                  Projects ({projects.length})
+                </h3>
+                <Link
+                  href="/projects"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 transition-colors"
+                >
+                  + Add Project
+                </Link>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {projects.map((project) => (
+                  <li key={project.id}>
+                    <Link
+                      href={`/projects/${project.id}`}
+                      className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <FolderKanban size={16} className="text-gray-400 flex-shrink-0" />
+                        <span className="text-sm font-medium text-gray-900 truncate">
+                          {project.name}
+                        </span>
+                        <StatusBadge status={project.status} />
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-gray-500 flex-shrink-0">
+                        {project.budgetHours != null && (
+                          <span>{project.budgetHours}h budget</span>
+                        )}
+                        {project.deadline && (
+                          <span>
+                            Due{" "}
+                            {new Date(project.deadline).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
 
       {activeTab === "invoices" && (

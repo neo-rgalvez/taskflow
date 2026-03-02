@@ -1,19 +1,70 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PriorityBadge } from "@/components/ui/PriorityBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Play, CheckCircle2, Calendar, Clock, Sun } from "lucide-react";
-import { todayTasks } from "@/lib/mock-data";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatDuration } from "@/lib/format";
+import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 
+interface TaskItem {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  dueDate: string | null;
+  projectId: string;
+  totalMinutes: number;
+  updatedAt: string;
+  project: { id: string; name: string; client: { id: string; name: string } } | null;
+}
+
 export default function TodayPage() {
-  const [showSkeleton, setShowSkeleton] = useState(false);
-  const [showEmpty, setShowEmpty] = useState(false);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [completedIds, setCompletedIds] = useState<string[]>([]);
+  const [todayMinutes, setTodayMinutes] = useState(0);
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const todayDisplay = formatDate(todayStr);
+
+  const fetchTodayData = useCallback(async () => {
+    setLoading(true);
+
+    // Get tasks due today or overdue (not done)
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const [todayResult, overdueResult] = await Promise.all([
+      apiFetch<{ data: TaskItem[] }>(
+        `/api/tasks?dueBefore=${endOfToday.toISOString()}&sort=priority&order=asc&limit=50`
+      ),
+      apiFetch<{ totalMinutes: number }>(
+        `/api/time-entries?dateFrom=${todayStr}T00:00:00.000Z&dateTo=${endOfToday.toISOString()}&limit=1`
+      ),
+    ]);
+
+    if (todayResult.data) {
+      // Filter to only non-done tasks
+      const allTasks = todayResult.data.data.filter(
+        (t) => t.status !== "done"
+      );
+      setTasks(allTasks);
+    }
+
+    if (overdueResult.data) {
+      setTodayMinutes(overdueResult.data.totalMinutes || 0);
+    }
+
+    setLoading(false);
+  }, [todayStr]);
+
+  useEffect(() => {
+    fetchTodayData();
+  }, [fetchTodayData]);
 
   const toggleComplete = (id: string) => {
     setCompletedIds((prev) =>
@@ -21,9 +72,11 @@ export default function TodayPage() {
     );
   };
 
-  const activeTasks = todayTasks.filter((t) => !completedIds.includes(t.id));
-  const completedTasks = todayTasks.filter((t) => completedIds.includes(t.id));
-  const totalHours = 3.75;
+  const activeTasks = tasks.filter((t) => !completedIds.includes(t.id));
+  const completedTasks = tasks.filter((t) => completedIds.includes(t.id));
+  const totalHours = Math.round((todayMinutes / 60) * 100) / 100;
+
+  const isEmpty = !loading && tasks.length === 0;
 
   return (
     <>
@@ -34,34 +87,12 @@ export default function TodayPage() {
             Today
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            {formatDate("2026-02-25")} &middot; {todayTasks.length} tasks &middot; {totalHours}h logged
+            {todayDisplay} &middot; {tasks.length} tasks &middot; {totalHours}h logged
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => { setShowSkeleton(!showSkeleton); setShowEmpty(false); }}
-            className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 rounded-md hover:bg-gray-200"
-          >
-            {showSkeleton ? "Show Data" : "Skeleton"}
-          </button>
-          <button
-            onClick={() => { setShowEmpty(!showEmpty); setShowSkeleton(false); }}
-            className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 rounded-md hover:bg-gray-200"
-          >
-            {showEmpty ? "Show Data" : "Empty"}
-          </button>
         </div>
       </div>
 
-      {showEmpty ? (
-        <EmptyState
-          icon="time"
-          headline="Nothing scheduled for today"
-          description="Enjoy your free day, or add tasks from your project boards."
-          ctaLabel="View Projects"
-          ctaHref="/projects"
-        />
-      ) : showSkeleton ? (
+      {loading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
@@ -76,6 +107,14 @@ export default function TodayPage() {
             </div>
           ))}
         </div>
+      ) : isEmpty ? (
+        <EmptyState
+          icon="time"
+          headline="Nothing scheduled for today"
+          description="Enjoy your free day, or add tasks from your project boards."
+          ctaLabel="View Projects"
+          ctaHref="/projects"
+        />
       ) : (
         <div className="space-y-6">
           {/* Active Tasks */}
@@ -84,46 +123,54 @@ export default function TodayPage() {
               To Do ({activeTasks.length})
             </h2>
             <div className="space-y-2">
-              {activeTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 hover:shadow-md transition-all"
-                >
-                  <div className="flex items-start gap-3">
-                    <button
-                      onClick={() => toggleComplete(task.id)}
-                      className="mt-0.5 w-5 h-5 rounded-full border-2 border-gray-300 hover:border-primary-500 flex items-center justify-center transition-colors flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <p className="text-sm font-medium text-gray-800">{task.title}</p>
-                        <PriorityBadge priority={task.priority} />
+              {activeTasks.map((task) => {
+                const isOverdue = task.dueDate && new Date(task.dueDate) < new Date();
+                return (
+                  <div
+                    key={task.id}
+                    className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 hover:shadow-md transition-all"
+                  >
+                    <div className="flex items-start gap-3">
+                      <button
+                        onClick={() => toggleComplete(task.id)}
+                        className="mt-0.5 w-5 h-5 rounded-full border-2 border-gray-300 hover:border-primary-500 flex items-center justify-center transition-colors flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <p className="text-sm font-medium text-gray-800">{task.title}</p>
+                          <PriorityBadge priority={task.priority} />
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          {task.project && (
+                            <Link href={`/projects/${task.project.id}`} className="hover:text-primary-500 font-medium">
+                              {task.project.name}
+                            </Link>
+                          )}
+                          {task.dueDate && (
+                            <span className={`flex items-center gap-1 ${isOverdue ? "text-red-500 font-medium" : ""}`}>
+                              <Calendar size={11} />
+                              {formatDate(task.dueDate.split("T")[0])}
+                              {isOverdue && " (overdue)"}
+                            </span>
+                          )}
+                          {task.totalMinutes > 0 && (
+                            <span className="flex items-center gap-1 font-mono">
+                              <Clock size={11} />
+                              {formatDuration(task.totalMinutes)}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <Link href={`/projects/${task.projectId}`} className="hover:text-primary-500 font-medium">{task.projectName}</Link>
-                        {task.dueDate && (
-                          <span className="flex items-center gap-1">
-                            <Calendar size={11} />
-                            {formatDate(task.dueDate)}
-                          </span>
-                        )}
-                        {task.timeLogged !== "0h" && (
-                          <span className="flex items-center gap-1 font-mono">
-                            <Clock size={11} />
-                            {task.timeLogged}
-                          </span>
-                        )}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <StatusBadge status={task.status} />
+                        <button className="p-1.5 text-gray-400 hover:text-primary-500 hover:bg-primary-50 rounded transition-colors">
+                          <Play size={14} />
+                        </button>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <StatusBadge status={task.status} />
-                      <button className="p-1.5 text-gray-400 hover:text-primary-500 hover:bg-primary-50 rounded transition-colors">
-                        <Play size={14} />
-                      </button>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -148,7 +195,7 @@ export default function TodayPage() {
                       </button>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-500 line-through">{task.title}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{task.projectName}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{task.project?.name ?? "Unknown project"}</p>
                       </div>
                     </div>
                   </div>
@@ -166,7 +213,7 @@ export default function TodayPage() {
                 <p className="text-xs text-gray-500">Hours Logged</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-gray-900 font-mono">{todayTasks.length}</p>
+                <p className="text-2xl font-bold text-gray-900 font-mono">{tasks.length}</p>
                 <p className="text-xs text-gray-500">Total Tasks</p>
               </div>
               <div>

@@ -86,6 +86,7 @@ export default function SignupPage() {
                 value={name}
                 onChange={(e) => { setName(e.target.value); if (errors.name) setErrors((p) => ({ ...p, name: "" })); }}
                 placeholder="e.g., Sarah Fletcher"
+                maxLength={200}
                 className={`w-full h-10 px-3 border rounded-md text-base focus:outline-none focus:ring-2 transition-colors ${
                   errors.name ? "border-red-500 focus:ring-red-200" : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
                 }`}
