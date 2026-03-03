@@ -13,51 +13,59 @@ export async function GET(
   const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
-  // Verify project ownership
-  const project = await db.project.findFirst({
-    where: { id: params.id, userId: auth.userId },
-    select: { id: true },
-  });
+  try {
+    // Verify project ownership
+    const project = await db.project.findFirst({
+      where: { id: params.id, userId: auth.userId },
+      select: { id: true },
+    });
 
-  if (!project) {
-    return NextResponse.json({ error: "Project not found" }, { status: 404 });
-  }
+    if (!project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
 
-  const tasks = await db.task.findMany({
-    where: { projectId: params.id, userId: auth.userId },
-    include: {
-      subtasks: {
-        orderBy: { position: "asc" },
-      },
-      _count: {
-        select: {
-          comments: true,
-          timeEntries: true,
+    const tasks = await db.task.findMany({
+      where: { projectId: params.id, userId: auth.userId },
+      include: {
+        subtasks: {
+          orderBy: { position: "asc" },
+        },
+        _count: {
+          select: {
+            comments: true,
+            timeEntries: true,
+          },
         },
       },
-    },
-    orderBy: [{ position: "asc" }, { createdAt: "asc" }],
-  });
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    });
 
-  // Compute aggregate time per task
-  const timeByTask = await db.timeEntry.groupBy({
-    by: ["taskId"],
-    where: { projectId: params.id, userId: auth.userId, taskId: { not: null } },
-    _sum: { durationMinutes: true },
-  });
+    // Compute aggregate time per task
+    const timeByTask = await db.timeEntry.groupBy({
+      by: ["taskId"],
+      where: { projectId: params.id, userId: auth.userId, taskId: { not: null } },
+      _sum: { durationMinutes: true },
+    });
 
-  const timeMap = new Map(
-    timeByTask.map((t) => [t.taskId, t._sum.durationMinutes || 0])
-  );
+    const timeMap = new Map(
+      timeByTask.map((t) => [t.taskId, t._sum.durationMinutes || 0])
+    );
 
-  const enrichedTasks = tasks.map((task) => ({
-    ...task,
-    totalMinutes: timeMap.get(task.id) || 0,
-    commentCount: task._count.comments,
-    timeEntryCount: task._count.timeEntries,
-  }));
+    const enrichedTasks = tasks.map((task) => ({
+      ...task,
+      totalMinutes: timeMap.get(task.id) || 0,
+      commentCount: task._count.comments,
+      timeEntryCount: task._count.timeEntries,
+    }));
 
-  return NextResponse.json({ data: enrichedTasks, totalCount: tasks.length });
+    return NextResponse.json({ data: enrichedTasks, totalCount: tasks.length });
+  } catch (err) {
+    console.error("Project tasks GET error:", err);
+    return NextResponse.json(
+      { error: "Failed to load project tasks." },
+      { status: 500 }
+    );
+  }
 }
 
 /**

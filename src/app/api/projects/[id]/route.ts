@@ -180,18 +180,16 @@ export async function DELETE(
   const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
-  const project = await db.project.findFirst({
+  const result = await db.project.deleteMany({
     where: { id: params.id, userId: auth.userId },
   });
 
-  if (!project) {
+  if (result.count === 0) {
     return NextResponse.json(
       { error: "Project not found" },
       { status: 404 }
     );
   }
-
-  await db.project.delete({ where: { id: params.id } });
 
   return NextResponse.json({ success: true }, { status: 200 });
 }

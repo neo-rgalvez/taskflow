@@ -148,6 +148,7 @@ export async function DELETE(
   const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
+  // Count time entries before deletion for response
   const task = await db.task.findFirst({
     where: { id: params.id, userId: auth.userId },
     include: {
@@ -160,7 +161,14 @@ export async function DELETE(
   }
 
   // Time entries will have taskId set to null via onDelete: SetNull (preserved, not deleted)
-  await db.task.delete({ where: { id: params.id } });
+  // Use deleteMany with userId for atomic ownership check
+  const result = await db.task.deleteMany({
+    where: { id: params.id, userId: auth.userId },
+  });
+
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Task not found" }, { status: 404 });
+  }
 
   return NextResponse.json({
     success: true,
