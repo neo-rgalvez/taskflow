@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { useTimer, formatElapsed } from "@/components/ui/TimerContext";
 import {
   LayoutDashboard,
   Sun,
@@ -47,7 +48,7 @@ const bottomItems = [
 const mobileNavItems = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/time", label: "Timer", icon: Clock, hasTimerDot: true },
+  { href: "/time", label: "Timer", icon: Clock, hasTimerDot: true as boolean },
   { href: "/invoices", label: "Invoices", icon: FileText },
 ];
 
@@ -60,12 +61,43 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+function SidebarTimerWidget({ collapsed }: { collapsed: boolean }) {
+  const { isActive, isRunning, elapsedSeconds, task } = useTimer();
+  if (!isActive || collapsed) return null;
+  return (
+    <div className="mt-3 bg-primary-50 rounded-lg p-3">
+      <div className="flex items-center gap-2 text-primary-700">
+        {isRunning ? (
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-500 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary-500" />
+          </span>
+        ) : (
+          <span className="relative flex h-2 w-2">
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-yellow-500" />
+          </span>
+        )}
+        <Play size={14} />
+        <span className="font-mono text-sm font-semibold">
+          {formatElapsed(elapsedSeconds)}
+        </span>
+      </div>
+      {task && (
+        <p className="text-xs text-primary-600 mt-1 truncate">
+          {task.title}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [userName, setUserName] = useState<string>("");
+  const { isActive: timerIsActive } = useTimer();
 
   useEffect(() => {
     apiFetch<{ name: string }>("/api/settings/account").then(({ data }) => {
@@ -197,21 +229,7 @@ export function Sidebar() {
           </div>
 
           {/* Active Timer */}
-          {!collapsed && (
-            <div className="mt-3 bg-primary-50 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-primary-700">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-500 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary-500" />
-                </span>
-                <Play size={14} />
-                <span className="font-mono text-sm font-semibold">01:23:45</span>
-              </div>
-              <p className="text-xs text-primary-600 mt-1 truncate">
-                Build responsive nav...
-              </p>
-            </div>
-          )}
+          <SidebarTimerWidget collapsed={collapsed} />
 
           {/* User */}
           <div className="border-t border-gray-200 mt-3 pt-3">
@@ -272,7 +290,7 @@ export function Sidebar() {
               >
                 <div className="relative">
                   <Icon size={20} />
-                  {item.hasTimerDot && (
+                  {item.hasTimerDot && timerIsActive && (
                     <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary-500 animate-pulse" />
                   )}
                 </div>
