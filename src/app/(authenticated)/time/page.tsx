@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { Plus, Clock, Play, AlertCircle, DollarSign } from "lucide-react";
+import { useTimer } from "@/components/ui/TimerContext";
+import { Plus, Clock, Play, Square, AlertCircle, DollarSign } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatDuration } from "@/lib/format";
 
@@ -75,6 +76,8 @@ function groupByDate(entries: TimeEntry[]): Record<string, TimeEntry[]> {
 // ---- Component ----
 
 export default function TimePage() {
+  const timer = useTimer();
+
   // Filter state
   const [projectFilter, setProjectFilter] = useState("all");
   const [billableFilter, setBillableFilter] = useState<"all" | "billable" | "non-billable">("all");
@@ -176,9 +179,21 @@ export default function TimePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-md hover:bg-primary-600 transition-colors">
-            <Play size={16} /> Start Timer
-          </button>
+          {timer.isActive ? (
+            <button
+              onClick={() => timer.stop()}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-md hover:bg-red-600 transition-colors"
+            >
+              <Square size={16} /> Stop Timer
+            </button>
+          ) : (
+            <button
+              onClick={() => timer.start()}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-md hover:bg-primary-600 transition-colors"
+            >
+              <Play size={16} /> Start Timer
+            </button>
+          )}
           <button className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors">
             <Plus size={16} /> Manual Entry
           </button>

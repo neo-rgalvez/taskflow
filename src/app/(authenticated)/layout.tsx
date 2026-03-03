@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { ToastProvider } from "@/components/ui/Toast";
+import { TimerProvider } from "@/components/ui/TimerContext";
 
 export default function AuthenticatedLayout({
   children,
@@ -7,8 +8,10 @@ export default function AuthenticatedLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ToastProvider>
-      <AppShell>{children}</AppShell>
-    </ToastProvider>
+    <TimerProvider>
+      <ToastProvider>
+        <AppShell>{children}</AppShell>
+      </ToastProvider>
+    </TimerProvider>
   );
 }

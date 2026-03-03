@@ -5,7 +5,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PriorityBadge } from "@/components/ui/PriorityBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { Play, CheckCircle2, Calendar, Clock, Sun } from "lucide-react";
+import { useTimer } from "@/components/ui/TimerContext";
+import { Play, Square, CheckCircle2, Calendar, Clock, Sun } from "lucide-react";
 import { formatDate, formatDuration } from "@/lib/format";
 import { apiFetch } from "@/lib/api";
 import Link from "next/link";
@@ -23,6 +24,7 @@ interface TaskItem {
 }
 
 export default function TodayPage() {
+  const timer = useTimer();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [completedIds, setCompletedIds] = useState<string[]>([]);
@@ -163,9 +165,30 @@ export default function TodayPage() {
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <StatusBadge status={task.status} />
-                        <button className="p-1.5 text-gray-400 hover:text-primary-500 hover:bg-primary-50 rounded transition-colors">
-                          <Play size={14} />
-                        </button>
+                        {timer.isActive && timer.task?.id === task.id ? (
+                          <button
+                            onClick={() => timer.stop()}
+                            className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                            title="Stop timer"
+                          >
+                            <Square size={14} />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() =>
+                              timer.start({
+                                task: { id: task.id, title: task.title },
+                                project: task.project
+                                  ? { id: task.project.id, name: task.project.name }
+                                  : undefined,
+                              })
+                            }
+                            className="p-1.5 text-gray-400 hover:text-primary-500 hover:bg-primary-50 rounded transition-colors"
+                            title="Start timer"
+                          >
+                            <Play size={14} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
