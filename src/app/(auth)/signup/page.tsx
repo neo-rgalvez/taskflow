@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import { Eye, EyeOff, Check, X } from "lucide-react";
 
@@ -32,13 +32,18 @@ export default function SignupPage() {
     return errs;
   }
 
+  const submittingRef = useRef(false);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submittingRef.current) return;
+
     setServerError("");
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
+    submittingRef.current = true;
     setLoading(true);
     try {
       const res = await fetch("/api/auth/register", {
@@ -57,6 +62,7 @@ export default function SignupPage() {
       setServerError("Network error. Please try again.");
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 
