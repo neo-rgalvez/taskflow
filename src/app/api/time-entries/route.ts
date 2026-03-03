@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
+import { createTimeEntrySchema } from "@/lib/validations/task";
 
 const querySchema = z.object({
   projectId: z.string().optional(),
@@ -98,4 +99,72 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * POST /api/time-entries — Create a manual time entry
+ */
+export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if (auth instanceof NextResponse) return auth;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const parsed = createTimeEntrySchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { errors: parsed.error.flatten().fieldErrors },
+      { status: 422 }
+    );
+  }
+
+  // Verify project ownership
+  const project = await db.project.findFirst({
+    where: { id: parsed.data.projectId, userId: auth.userId },
+    select: { id: true },
+  });
+
+  if (!project) {
+    return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  }
+
+  // If taskId provided, verify it belongs to the project and the user
+  if (parsed.data.taskId) {
+    const task = await db.task.findFirst({
+      where: {
+        id: parsed.data.taskId,
+        projectId: parsed.data.projectId,
+        userId: auth.userId,
+      },
+      select: { id: true },
+    });
+
+    if (!task) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+  }
+
+  const now = new Date();
+  const startTime = new Date(now.getTime() - parsed.data.durationMinutes * 60 * 1000);
+
+  const entry = await db.timeEntry.create({
+    data: {
+      projectId: parsed.data.projectId,
+      taskId: parsed.data.taskId || null,
+      userId: auth.userId,
+      description: parsed.data.description || null,
+      startTime,
+      endTime: now,
+      durationMinutes: parsed.data.durationMinutes,
+      isBillable: parsed.data.isBillable,
+    },
+  });
+
+  return NextResponse.json(entry, { status: 201 });
 }

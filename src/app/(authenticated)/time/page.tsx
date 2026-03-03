@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useTimer } from "@/components/ui/TimerContext";
-import { Plus, Clock, Play, Square, AlertCircle, DollarSign } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
+import { Plus, Clock, Play, Square, AlertCircle, DollarSign, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatDuration } from "@/lib/format";
 
@@ -56,6 +57,16 @@ interface ProjectsResponse {
   [key: string]: unknown;
 }
 
+interface TaskOption {
+  id: string;
+  title: string;
+}
+
+interface TasksResponse {
+  data: TaskOption[];
+  [key: string]: unknown;
+}
+
 // ---- Helpers ----
 
 /** Extract a YYYY-MM-DD date string from an ISO datetime for grouping. */
@@ -77,6 +88,7 @@ function groupByDate(entries: TimeEntry[]): Record<string, TimeEntry[]> {
 
 export default function TimePage() {
   const timer = useTimer();
+  const { toast } = useToast();
 
   // Filter state
   const [projectFilter, setProjectFilter] = useState("all");
@@ -94,6 +106,19 @@ export default function TimePage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Manual entry modal state
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualProjectId, setManualProjectId] = useState("");
+  const [manualTaskId, setManualTaskId] = useState("");
+  const [manualHours, setManualHours] = useState("");
+  const [manualMinutes, setManualMinutes] = useState("");
+  const [manualDescription, setManualDescription] = useState("");
+  const [manualBillable, setManualBillable] = useState(true);
+  const [manualTasks, setManualTasks] = useState<TaskOption[]>([]);
+  const [manualTasksLoading, setManualTasksLoading] = useState(false);
+  const [manualSubmitting, setManualSubmitting] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
   // ---- Fetch projects (once on mount) ----
   useEffect(() => {
@@ -162,6 +187,102 @@ export default function TimePage() {
     fetchEntries();
   }, [fetchEntries]);
 
+  // ---- Manual entry helpers ----
+
+  // Fetch tasks when a project is selected in the manual entry form
+  useEffect(() => {
+    if (!manualProjectId) {
+      setManualTasks([]);
+      setManualTaskId("");
+      return;
+    }
+
+    let cancelled = false;
+    setManualTasksLoading(true);
+    (async () => {
+      const res = await apiFetch<TasksResponse>(`/api/projects/${manualProjectId}/tasks`);
+      if (!cancelled && res.data) {
+        setManualTasks(res.data.data.map((t) => ({ id: t.id, title: t.title })));
+      }
+      if (!cancelled) setManualTasksLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [manualProjectId]);
+
+  function resetManualForm() {
+    setManualProjectId("");
+    setManualTaskId("");
+    setManualHours("");
+    setManualMinutes("");
+    setManualDescription("");
+    setManualBillable(true);
+    setManualTasks([]);
+    setManualError(null);
+  }
+
+  function openManualEntry() {
+    resetManualForm();
+    setShowManualEntry(true);
+  }
+
+  function closeManualEntry() {
+    setShowManualEntry(false);
+  }
+
+  async function handleManualSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setManualError(null);
+
+    const h = parseInt(manualHours || "0", 10);
+    const m = parseInt(manualMinutes || "0", 10);
+
+    if (isNaN(h) || isNaN(m) || h < 0 || m < 0) {
+      setManualError("Please enter valid hours and minutes.");
+      return;
+    }
+
+    const durationMinutes = h * 60 + m;
+
+    if (durationMinutes < 1) {
+      setManualError("Duration must be at least 1 minute.");
+      return;
+    }
+
+    if (durationMinutes > 1440) {
+      setManualError("Duration must be 24 hours or less.");
+      return;
+    }
+
+    if (!manualProjectId) {
+      setManualError("Please select a project.");
+      return;
+    }
+
+    setManualSubmitting(true);
+
+    const res = await apiFetch("/api/time-entries", {
+      method: "POST",
+      body: JSON.stringify({
+        projectId: manualProjectId,
+        taskId: manualTaskId || null,
+        description: manualDescription.trim() || undefined,
+        durationMinutes,
+        isBillable: manualBillable,
+      }),
+    });
+
+    setManualSubmitting(false);
+
+    if (res.error) {
+      setManualError(res.error);
+      return;
+    }
+
+    toast("success", "Time entry added.");
+    closeManualEntry();
+    fetchEntries();
+  }
+
   // ---- Derived data ----
   const grouped = groupByDate(entries);
   const totalHours = totalMinutes / 60;
@@ -194,7 +315,10 @@ export default function TimePage() {
               <Play size={16} /> Start Timer
             </button>
           )}
-          <button className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors">
+          <button
+            onClick={openManualEntry}
+            className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors"
+          >
             <Plus size={16} /> Manual Entry
           </button>
         </div>
@@ -366,6 +490,160 @@ export default function TimePage() {
           )}
         </div>
       ) : null}
+
+      {/* Manual Entry Modal */}
+      {showManualEntry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/50" onClick={closeManualEntry} />
+          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6 animate-fade-in">
+            <button
+              onClick={closeManualEntry}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            >
+              <X size={20} />
+            </button>
+
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Log Time Entry</h2>
+
+            <form onSubmit={handleManualSubmit} className="space-y-4">
+              {/* Project */}
+              <div>
+                <label htmlFor="manual-project" className="block text-sm font-medium text-gray-700 mb-1">
+                  Project <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="manual-project"
+                  value={manualProjectId}
+                  onChange={(e) => {
+                    setManualProjectId(e.target.value);
+                    setManualTaskId("");
+                  }}
+                  required
+                  className="w-full h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                >
+                  <option value="">Select a project</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Task (optional) */}
+              <div>
+                <label htmlFor="manual-task" className="block text-sm font-medium text-gray-700 mb-1">
+                  Task <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <select
+                  id="manual-task"
+                  value={manualTaskId}
+                  onChange={(e) => setManualTaskId(e.target.value)}
+                  disabled={!manualProjectId || manualTasksLoading}
+                  className="w-full h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200 disabled:bg-gray-50 disabled:text-gray-400"
+                >
+                  <option value="">{manualTasksLoading ? "Loading tasks..." : "No task"}</option>
+                  {manualTasks.map((t) => (
+                    <option key={t.id} value={t.id}>{t.title}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Duration */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Duration <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="24"
+                      value={manualHours}
+                      onChange={(e) => setManualHours(e.target.value)}
+                      placeholder="0"
+                      className="w-20 h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                    />
+                    <span className="text-sm text-gray-500">h</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={manualMinutes}
+                      onChange={(e) => setManualMinutes(e.target.value)}
+                      placeholder="0"
+                      className="w-20 h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                    />
+                    <span className="text-sm text-gray-500">m</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label htmlFor="manual-description" className="block text-sm font-medium text-gray-700 mb-1">
+                  Description <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <textarea
+                  id="manual-description"
+                  value={manualDescription}
+                  onChange={(e) => setManualDescription(e.target.value)}
+                  rows={2}
+                  maxLength={2000}
+                  placeholder="What did you work on?"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200 resize-none"
+                />
+              </div>
+
+              {/* Billable toggle */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setManualBillable(!manualBillable)}
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                    manualBillable ? "bg-primary-500" : "bg-gray-200"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      manualBillable ? "translate-x-4" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+                <span className="text-sm text-gray-700">Billable</span>
+              </div>
+
+              {/* Error */}
+              {manualError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+                  <AlertCircle size={16} className="flex-shrink-0" />
+                  {manualError}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeManualEntry}
+                  disabled={manualSubmitting}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={manualSubmitting}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 disabled:opacity-50 transition-colors"
+                >
+                  {manualSubmitting ? "Saving..." : "Save Entry"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }
