@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 import {
   LayoutDashboard,
   Sun,
@@ -50,11 +51,29 @@ const mobileNavItems = [
   { href: "/invoices", label: "Invoices", icon: FileText },
 ];
 
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [userName, setUserName] = useState<string>("");
+
+  useEffect(() => {
+    apiFetch<{ name: string }>("/api/settings/account").then(({ data }) => {
+      if (data?.name) {
+        setUserName(data.name);
+      }
+    });
+  }, []);
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -198,11 +217,11 @@ export function Sidebar() {
           <div className="border-t border-gray-200 mt-3 pt-3">
             <div className="flex items-center gap-3 px-3">
               <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-semibold text-primary-700">SF</span>
+                <span className="text-xs font-semibold text-primary-700">{userName ? getInitials(userName) : ""}</span>
               </div>
               {!collapsed && (
                 <span className="text-sm font-medium text-gray-700 truncate flex-1">
-                  Sarah F.
+                  {userName}
                 </span>
               )}
               {!collapsed && (
