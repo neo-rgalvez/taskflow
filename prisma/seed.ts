@@ -269,6 +269,73 @@ async function main() {
   }
 
   console.log(`Seeded ${commentsData.length} comments`);
+
+  // Seed notification preferences
+  await prisma.notificationPreference.upsert({
+    where: { userId: user.id },
+    update: {},
+    create: {
+      id: "np_1",
+      userId: user.id,
+      deadlineRemindersEnabled: true,
+      deadlineReminderDays: 3,
+      budgetAlertsEnabled: true,
+      overdueInvoiceRemindersEnabled: true,
+      timeTrackingRemindersEnabled: false,
+      emailChannelEnabled: true,
+      inAppChannelEnabled: true,
+    },
+  });
+
+  console.log("Seeded notification preferences");
+
+  // Seed sample notifications
+  const notificationsData = [
+    {
+      id: "notif_1",
+      type: "budget_alert",
+      title: "Budget alert",
+      message: "Patient Portal Redesign is at 66% of its hourly budget.",
+      referenceType: "project",
+      referenceId: project1.id,
+      isRead: false,
+      createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2h ago
+    },
+    {
+      id: "notif_2",
+      type: "deadline_reminder",
+      title: "Deadline approaching",
+      message: "Build responsive navigation prototype is due in 4 days.",
+      referenceType: "task",
+      referenceId: "tsk_4",
+      isRead: false,
+      createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1d ago
+    },
+    {
+      id: "notif_3",
+      type: "deadline_reminder",
+      title: "Deadline approaching",
+      message: "Design appointment scheduling modal is due in 8 days.",
+      referenceType: "task",
+      referenceId: "tsk_1",
+      isRead: true,
+      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3d ago
+    },
+  ];
+
+  for (const n of notificationsData) {
+    await prisma.notification.upsert({
+      where: { id: n.id },
+      update: {},
+      create: {
+        ...n,
+        userId: user.id,
+        channel: "in_app",
+      },
+    });
+  }
+
+  console.log(`Seeded ${notificationsData.length} notifications`);
 }
 
 main()

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { apiFetch } from "@/lib/api";
@@ -26,6 +26,7 @@ import {
   Home,
   MoreHorizontal,
   LogOut,
+  AlertTriangle,
 } from "lucide-react";
 
 const navItems = [
@@ -51,6 +52,46 @@ const mobileNavItems = [
   { href: "/time", label: "Timer", icon: Clock, hasTimerDot: true as boolean },
   { href: "/invoices", label: "Invoices", icon: FileText },
 ];
+
+interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  referenceType: string | null;
+  referenceId: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+function getNotificationIcon(type: string) {
+  switch (type) {
+    case "deadline_reminder":
+      return <Calendar size={14} className="text-amber-500" />;
+    case "budget_alert":
+      return <AlertTriangle size={14} className="text-amber-500" />;
+    case "overdue_invoice":
+      return <FileText size={14} className="text-red-500" />;
+    case "time_tracking_reminder":
+      return <Clock size={14} className="text-blue-500" />;
+    default:
+      return <Bell size={14} className="text-gray-400" />;
+  }
+}
+
+function formatTimeAgo(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return `${Math.floor(diffDays / 30)}mo ago`;
+}
 
 function getInitials(name: string): string {
   return name
@@ -97,7 +138,20 @@ export function Sidebar() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [userName, setUserName] = useState<string>("");
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const { isActive: timerIsActive } = useTimer();
+
+  const loadNotifications = useCallback(() => {
+    apiFetch<{ items: NotificationItem[]; unreadCount: number }>(
+      "/api/notifications?limit=10"
+    ).then(({ data }) => {
+      if (data) {
+        setNotifications(data.items);
+        setUnreadCount(data.unreadCount);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     apiFetch<{ name: string }>("/api/settings/account").then(({ data }) => {
@@ -105,7 +159,34 @@ export function Sidebar() {
         setUserName(data.name);
       }
     });
-  }, []);
+    loadNotifications();
+  }, [loadNotifications]);
+
+  // Refresh notifications when panel is opened
+  useEffect(() => {
+    if (showNotifications) {
+      loadNotifications();
+    }
+  }, [showNotifications, loadNotifications]);
+
+  async function handleMarkAllRead() {
+    const { data } = await apiFetch<{ success: boolean }>(
+      "/api/notifications/mark-all-read",
+      { method: "POST" }
+    );
+    if (data?.success) {
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    }
+  }
+
+  async function handleMarkRead(id: string) {
+    await apiFetch(`/api/notifications/${id}/read`, { method: "PATCH" });
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+    );
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+  }
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -188,9 +269,11 @@ export function Sidebar() {
             >
               <div className="relative flex-shrink-0">
                 <Bell size={20} />
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-error text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  3
-                </span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-error text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </div>
               {!collapsed && <span>Notifications</span>}
             </button>
@@ -200,30 +283,59 @@ export function Sidebar() {
               <div className="absolute bottom-full left-0 mb-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-10 max-h-[480px] overflow-y-auto">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
                   <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
-                  <button className="text-xs text-primary-500 hover:text-primary-700">Mark all read</button>
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={handleMarkAllRead}
+                      className="text-xs text-primary-500 hover:text-primary-700"
+                    >
+                      Mark all read
+                    </button>
+                  )}
                 </div>
-                {[
-                  { unread: true, title: "Budget alert", body: "Patient Portal Redesign is at 66% of its hourly budget.", time: "2h ago", icon: "warning" },
-                  { unread: true, title: "Deadline approaching", body: "Annual Report Design for Northstar Financial is due in 23 days.", time: "1d ago", icon: "calendar" },
-                  { unread: false, title: "Invoice overdue", body: "INV-040 for Verde Landscape Architecture is past due.", time: "3d ago", icon: "invoice" },
-                ].map((n, i) => (
-                  <div key={i} className={`px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${n.unread ? "" : "opacity-60"}`}>
-                    <div className="flex items-start gap-2">
-                      {n.unread && <span className="mt-1.5 w-2 h-2 rounded-full bg-primary-500 flex-shrink-0" />}
-                      {!n.unread && <span className="mt-1.5 w-2 h-2 flex-shrink-0" />}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-gray-800">{n.title}</p>
-                          <span className="text-xs text-gray-400 flex-shrink-0 ml-2">{n.time}</span>
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <p className="text-sm text-gray-400">All caught up!</p>
+                  </div>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      onClick={() => !n.isRead && handleMarkRead(n.id)}
+                      className={`px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${n.isRead ? "opacity-60" : ""}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {!n.isRead ? (
+                          <span className="mt-1.5 w-2 h-2 rounded-full bg-primary-500 flex-shrink-0" />
+                        ) : (
+                          <span className="mt-1.5 w-2 h-2 flex-shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              {getNotificationIcon(n.type)}
+                              <p className="text-sm font-medium text-gray-800">{n.title}</p>
+                            </div>
+                            <span className="text-xs text-gray-400 flex-shrink-0 ml-2">
+                              {formatTimeAgo(n.createdAt)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>
                         </div>
-                        <p className="text-sm text-gray-500 mt-0.5 line-clamp-2">{n.body}</p>
                       </div>
                     </div>
+                  ))
+                )}
+                {notifications.length > 0 && (
+                  <div className="px-4 py-3 text-center">
+                    <Link
+                      href="/settings"
+                      onClick={() => setShowNotifications(false)}
+                      className="text-sm text-primary-500 hover:text-primary-700"
+                    >
+                      View all notifications
+                    </Link>
                   </div>
-                ))}
-                <div className="px-4 py-3 text-center">
-                  <button className="text-sm text-primary-500 hover:text-primary-700">View all notifications</button>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -349,6 +461,15 @@ export function Sidebar() {
 export function MobileHeader() {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileUnreadCount, setMobileUnreadCount] = useState(0);
+
+  useEffect(() => {
+    apiFetch<{ unreadCount: number }>("/api/notifications?limit=1").then(
+      ({ data }) => {
+        if (data) setMobileUnreadCount(data.unreadCount);
+      }
+    );
+  }, []);
 
   const allItems = [
     ...navItems,
@@ -371,7 +492,11 @@ export function MobileHeader() {
           </Link>
           <button className="p-2 text-gray-400 hover:text-gray-600 relative">
             <Bell size={20} />
-            <span className="absolute top-1 right-1 w-3.5 h-3.5 bg-error text-white text-[8px] font-bold rounded-full flex items-center justify-center">3</span>
+            {mobileUnreadCount > 0 && (
+              <span className="absolute top-1 right-1 w-3.5 h-3.5 bg-error text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                {mobileUnreadCount > 99 ? "99+" : mobileUnreadCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

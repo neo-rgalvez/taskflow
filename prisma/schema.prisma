@@ -33,6 +33,8 @@ model User {
   tasks                     Task[]
   timeEntries               TimeEntry[]
   comments                  Comment[]
+  notifications             Notification[]
+  notificationPreference    NotificationPreference?
 
   @@map("users")
 }
@@ -224,4 +226,45 @@ model Comment {
 
   @@index([taskId])
   @@map("comments")
+}
+
+// ─── Notification ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  type          String   // deadline_reminder, budget_alert, overdue_invoice, time_tracking_reminder
+  title         String
+  message       String
+  referenceType String?  @map("reference_type") // task, project, invoice
+  referenceId   String?  @map("reference_id")
+  isRead        Boolean  @default(false) @map("is_read")
+  channel       String   @default("in_app") // in_app, email
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// ─── Notification Preference ──────────────────────────────────────────────────
+
+model NotificationPreference {
+  id                          String  @id @default(cuid())
+  userId                      String  @unique @map("user_id")
+  deadlineRemindersEnabled    Boolean @default(true) @map("deadline_reminders_enabled")
+  deadlineReminderDays        Int     @default(3) @map("deadline_reminder_days")
+  budgetAlertsEnabled         Boolean @default(true) @map("budget_alerts_enabled")
+  overdueInvoiceRemindersEnabled Boolean @default(true) @map("overdue_invoice_reminders_enabled")
+  timeTrackingRemindersEnabled Boolean @default(false) @map("time_tracking_reminders_enabled")
+  emailChannelEnabled         Boolean @default(true) @map("email_channel_enabled")
+  inAppChannelEnabled         Boolean @default(true) @map("in_app_channel_enabled")
+  createdAt                   DateTime @default(now()) @map("created_at")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
 }
