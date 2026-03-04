@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
 import { createTimeEntrySchema } from "@/lib/validations/task";
+import { checkBudgetAlert } from "@/lib/notifications";
 
 const querySchema = z.object({
   projectId: z.string().optional(),
@@ -165,6 +166,11 @@ export async function POST(req: NextRequest) {
       isBillable: parsed.data.isBillable,
     },
   });
+
+  // Check budget threshold (fire-and-forget)
+  checkBudgetAlert(parsed.data.projectId).catch((err) =>
+    console.error("Budget alert check failed:", err)
+  );
 
   return NextResponse.json(entry, { status: 201 });
 }

@@ -795,9 +795,106 @@ function DangerZoneTab({ onDeleted }: { onDeleted: () => void }) {
   );
 }
 
-// ─── Notifications Tab (unchanged – still presentation-only) ────────────────
+// ─── Notifications Tab ───────────────────────────────────────────────────────
+
+interface NotificationPrefs {
+  emailChannelEnabled: boolean;
+  inAppChannelEnabled: boolean;
+  deadlineRemindersEnabled: boolean;
+  deadlineReminderDays: number;
+  budgetAlertsEnabled: boolean;
+  overdueInvoiceRemindersEnabled: boolean;
+  timeTrackingRemindersEnabled: boolean;
+}
 
 function NotificationsTab() {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [prefs, setPrefs] = useState<NotificationPrefs>({
+    emailChannelEnabled: true,
+    inAppChannelEnabled: true,
+    deadlineRemindersEnabled: true,
+    deadlineReminderDays: 3,
+    budgetAlertsEnabled: true,
+    overdueInvoiceRemindersEnabled: true,
+    timeTrackingRemindersEnabled: false,
+  });
+
+  useEffect(() => {
+    apiFetch<NotificationPrefs>("/api/settings/notifications").then(
+      ({ data, error }) => {
+        if (data) {
+          setPrefs(data);
+        } else if (error) {
+          toast("error", error);
+        }
+        setLoading(false);
+      }
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    const { data, error } = await apiFetch<NotificationPrefs>(
+      "/api/settings/notifications",
+      { method: "PATCH", body: JSON.stringify(prefs) }
+    );
+    if (data) {
+      setPrefs(data);
+      toast("success", "Notification preferences saved.");
+    } else {
+      toast("error", error || "Failed to save preferences.");
+    }
+    setSaving(false);
+  }
+
+  function togglePref(key: keyof NotificationPrefs) {
+    setPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-6">
+        <Skeleton className="h-6 w-48 rounded" />
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-full rounded" />
+          <Skeleton className="h-10 w-full rounded" />
+          <Skeleton className="h-10 w-full rounded" />
+        </div>
+      </div>
+    );
+  }
+
+  const notificationTypes: {
+    key: keyof NotificationPrefs;
+    label: string;
+    description: string;
+  }[] = [
+    {
+      key: "deadlineRemindersEnabled",
+      label: "Deadline reminders",
+      description:
+        "Get notified when task or project deadlines are approaching",
+    },
+    {
+      key: "budgetAlertsEnabled",
+      label: "Budget alerts",
+      description: "Alert when a project reaches 80% of its budget",
+    },
+    {
+      key: "overdueInvoiceRemindersEnabled",
+      label: "Overdue invoice reminders",
+      description: "Remind when invoices pass their due date",
+    },
+    {
+      key: "timeTrackingRemindersEnabled",
+      label: "Weekly time tracking summary",
+      description: "Receive a summary of your tracked hours each week",
+    },
+  ];
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
       <h2 className="text-xl font-semibold text-gray-900 mb-6">
@@ -822,7 +919,8 @@ function NotificationsTab() {
               <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
-                  defaultChecked={true}
+                  checked={prefs.emailChannelEnabled}
+                  onChange={() => togglePref("emailChannelEnabled")}
                   className="sr-only peer"
                 />
                 <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500" />
@@ -840,7 +938,8 @@ function NotificationsTab() {
               <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input
                   type="checkbox"
-                  defaultChecked={true}
+                  checked={prefs.inAppChannelEnabled}
+                  onChange={() => togglePref("inAppChannelEnabled")}
                   className="sr-only peer"
                 />
                 <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500" />
@@ -850,34 +949,9 @@ function NotificationsTab() {
         </div>
 
         {/* Notification Types */}
-        {[
-          {
-            label: "Deadline reminders",
-            description:
-              "Get notified when task or project deadlines are approaching",
-            defaultOn: true,
-          },
-          {
-            label: "Budget alerts",
-            description:
-              "Alert when a project reaches 80% of its budget",
-            defaultOn: true,
-          },
-          {
-            label: "Overdue invoice reminders",
-            description:
-              "Remind when invoices pass their due date",
-            defaultOn: true,
-          },
-          {
-            label: "Weekly time tracking summary",
-            description:
-              "Receive a summary of your tracked hours each week",
-            defaultOn: false,
-          },
-        ].map((setting) => (
+        {notificationTypes.map((setting) => (
           <div
-            key={setting.label}
+            key={setting.key}
             className="flex items-start justify-between gap-4"
           >
             <div>
@@ -891,7 +965,8 @@ function NotificationsTab() {
             <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
               <input
                 type="checkbox"
-                defaultChecked={setting.defaultOn}
+                checked={!!prefs[setting.key]}
+                onChange={() => togglePref(setting.key)}
                 className="sr-only peer"
               />
               <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500" />
@@ -907,18 +982,31 @@ function NotificationsTab() {
             <label className="block text-sm text-gray-600 mb-1.5">
               Send deadline reminders
             </label>
-            <select className="h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200">
-              <option>1 day before</option>
-              <option>2 days before</option>
-              <option>3 days before</option>
-              <option>1 week before</option>
+            <select
+              value={prefs.deadlineReminderDays}
+              onChange={(e) =>
+                setPrefs((prev) => ({
+                  ...prev,
+                  deadlineReminderDays: Number(e.target.value),
+                }))
+              }
+              className="h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+            >
+              <option value={1}>1 day before</option>
+              <option value={2}>2 days before</option>
+              <option value={3}>3 days before</option>
+              <option value={7}>1 week before</option>
             </select>
           </div>
         </div>
 
         <div className="flex justify-end pt-4">
-          <button className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600">
-            Save Preferences
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? "Saving..." : "Save Preferences"}
           </button>
         </div>
       </div>

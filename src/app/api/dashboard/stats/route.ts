@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { checkDeadlineReminders } from "@/lib/notifications";
 
 /**
  * GET /api/dashboard/stats — Dashboard summary stats
@@ -62,6 +63,11 @@ export async function GET(req: NextRequest) {
 
     const billableMinutes = billableResult._sum.durationMinutes || 0;
     const billableHours = Math.round((billableMinutes / 60) * 10) / 10;
+
+    // Generate deadline reminder notifications (fire-and-forget)
+    checkDeadlineReminders(auth.userId).catch((err) =>
+      console.error("Deadline reminder check failed:", err)
+    );
 
     return NextResponse.json({
       totalClients,
