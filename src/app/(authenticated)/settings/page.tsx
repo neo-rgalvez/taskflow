@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, FormEvent } from "react";
+import { useState, useEffect, useCallback, useRef, FormEvent, ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import {
@@ -25,6 +26,7 @@ interface UserAccount {
   name: string;
   email: string;
   timezone: string;
+  avatarUrl: string | null;
   emailVerified: boolean;
   createdAt: string;
 }
@@ -215,8 +217,42 @@ function ProfileTab({
   const [name, setName] = useState(account.name);
   const [email, setEmail] = useState(account.email);
   const [timezone, setTimezone] = useState(account.timezone);
+  const [avatarUrl, setAvatarUrl] = useState(account.avatarUrl);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleAvatarChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingAvatar(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/settings/avatar", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        toast("error", json.error || "Failed to upload avatar.");
+      } else {
+        setAvatarUrl(json.avatarUrl);
+        onSaved({ ...account, avatarUrl: json.avatarUrl });
+        toast("success", "Avatar updated.");
+      }
+    } catch {
+      toast("error", "Network error. Please try again.");
+    } finally {
+      setUploadingAvatar(false);
+      // Reset file input so the same file can be selected again
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   const hasChanges =
     name !== account.name ||
@@ -267,17 +303,37 @@ function ProfileTab({
       </h2>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center">
-            <span className="text-lg font-semibold text-primary-700">
-              {initials}
-            </span>
-          </div>
+          {avatarUrl ? (
+            <Image
+              src={avatarUrl}
+              alt="Avatar"
+              width={64}
+              height={64}
+              unoptimized
+              className="w-16 h-16 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center">
+              <span className="text-lg font-semibold text-primary-700">
+                {initials}
+              </span>
+            </div>
+          )}
           <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png"
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
             <button
               type="button"
-              className="text-sm text-primary-500 hover:text-primary-700 font-medium"
+              disabled={uploadingAvatar}
+              onClick={() => fileInputRef.current?.click()}
+              className="text-sm text-primary-500 hover:text-primary-700 font-medium disabled:opacity-50"
             >
-              Change avatar
+              {uploadingAvatar ? "Uploading…" : "Change avatar"}
             </button>
             <p className="text-xs text-gray-400 mt-0.5">JPG, PNG. Max 2MB.</p>
           </div>
