@@ -575,6 +575,7 @@ function PasswordTab() {
 
 function DangerZoneTab({ onDeleted }: { onDeleted: () => void }) {
   const { toast } = useToast();
+  const [exporting, setExporting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -603,6 +604,32 @@ function DangerZoneTab({ onDeleted }: { onDeleted: () => void }) {
       timeEntries: timeEntries.data?.totalCount ?? 0,
     });
     setLoadingCounts(false);
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const res = await fetch("/api/settings/export");
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        toast("error", json?.error || "Export failed");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `taskflow-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast("success", "Data exported successfully");
+    } catch {
+      toast("error", "Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   function openDeleteDialog() {
@@ -660,8 +687,12 @@ function DangerZoneTab({ onDeleted }: { onDeleted: () => void }) {
                 entries, and invoices.
               </p>
             </div>
-            <button className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 flex-shrink-0">
-              Export
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+            >
+              {exporting ? "Exporting…" : "Export"}
             </button>
           </div>
 
