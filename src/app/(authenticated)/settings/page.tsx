@@ -612,7 +612,7 @@ function DangerZoneTab({ onDeleted }: { onDeleted: () => void }) {
       const res = await fetch("/api/settings/export");
       if (!res.ok) {
         const json = await res.json().catch(() => null);
-        toast({ title: json?.error || "Export failed", variant: "destructive" });
+        toast("error", json?.error || "Export failed");
         return;
       }
       const blob = await res.blob();
@@ -624,9 +624,9 @@ function DangerZoneTab({ onDeleted }: { onDeleted: () => void }) {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      toast({ title: "Data exported successfully" });
+      toast("success", "Data exported successfully");
     } catch {
-      toast({ title: "Export failed. Please try again.", variant: "destructive" });
+      toast("error", "Export failed. Please try again.");
     } finally {
       setExporting(false);
     }
