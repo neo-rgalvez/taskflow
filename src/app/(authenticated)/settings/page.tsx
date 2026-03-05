@@ -179,6 +179,7 @@ export default function SettingsPage() {
                     setAccount(updated);
                     toast("success", "Profile updated successfully.");
                   }}
+                  onAccountChanged={setAccount}
                 />
               )}
 
@@ -209,9 +210,11 @@ export default function SettingsPage() {
 function ProfileTab({
   account,
   onSaved,
+  onAccountChanged,
 }: {
   account: UserAccount;
   onSaved: (updated: UserAccount) => void;
+  onAccountChanged: (updated: UserAccount) => void;
 }) {
   const { toast } = useToast();
   const [name, setName] = useState(account.name);
@@ -241,8 +244,9 @@ function ProfileTab({
       if (!res.ok) {
         toast("error", json.error || "Failed to upload avatar.");
       } else {
-        setAvatarUrl(json.avatarUrl);
-        onSaved({ ...account, avatarUrl: json.avatarUrl });
+        const newAvatarUrl = json.avatarUrl ?? null;
+        setAvatarUrl(newAvatarUrl);
+        onAccountChanged({ ...account, name, email, timezone, avatarUrl: newAvatarUrl });
         toast("success", "Avatar updated.");
       }
     } catch {

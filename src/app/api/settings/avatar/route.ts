@@ -18,30 +18,33 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get("file");
 
-    if (!file || !(file instanceof File)) {
+    if (!file || typeof file === "string") {
       return NextResponse.json(
         { error: "No file provided." },
         { status: 422 }
       );
     }
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    // file is a Blob/File from formData — cast for property access
+    const uploadedFile = file as File;
+
+    if (!ALLOWED_TYPES.includes(uploadedFile.type)) {
       return NextResponse.json(
         { error: "Only JPG and PNG files are allowed." },
         { status: 422 }
       );
     }
 
-    if (file.size > MAX_FILE_SIZE) {
+    if (uploadedFile.size > MAX_FILE_SIZE) {
       return NextResponse.json(
         { error: "File must be 2MB or smaller." },
         { status: 422 }
       );
     }
 
-    const bytes = await file.arrayBuffer();
+    const bytes = await uploadedFile.arrayBuffer();
     const base64 = Buffer.from(bytes).toString("base64");
-    const dataUrl = `data:${file.type};base64,${base64}`;
+    const dataUrl = `data:${uploadedFile.type};base64,${base64}`;
 
     const updated = await db.user.update({
       where: { id: auth.userId },
