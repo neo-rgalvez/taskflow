@@ -19,7 +19,11 @@ export async function GET(req: NextRequest) {
     weekStart.setDate(now.getDate() + mondayOffset);
     weekStart.setHours(0, 0, 0, 0);
 
-    const [totalClients, activeProjects, hoursThisWeekResult, totalTasks, upcomingDeadlines] = await Promise.all([
+    // Calculate start of current month
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [totalClients, activeProjects, hoursThisWeekResult, totalTasks, upcomingDeadlines, billedThisMonthResult] = await Promise.all([
       db.client.count({
         where: { userId: auth.userId, isArchived: false },
       }),
@@ -46,7 +50,17 @@ export async function GET(req: NextRequest) {
           status: { not: "done" },
         },
       }),
+      db.invoice.aggregate({
+        where: {
+          userId: auth.userId,
+          status: { in: ["sent", "paid", "partial", "overdue"] },
+          issuedDate: { gte: monthStart },
+        },
+        _sum: { total: true },
+      }),
     ]);
+
+    const billedThisMonth = Number(billedThisMonthResult._sum.total || 0);
 
     const totalMinutesThisWeek = hoursThisWeekResult._sum.durationMinutes || 0;
     const hoursThisWeek = Math.round((totalMinutesThisWeek / 60) * 10) / 10;
@@ -76,6 +90,7 @@ export async function GET(req: NextRequest) {
       billableHours,
       totalTasks,
       upcomingDeadlines,
+      billedThisMonth,
     });
   } catch (err) {
     console.error("Dashboard stats error:", err);
