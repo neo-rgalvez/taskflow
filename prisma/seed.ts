@@ -336,6 +336,96 @@ async function main() {
   }
 
   console.log(`Seeded ${notificationsData.length} notifications`);
+
+  // Seed invoices
+  const invoicesData = [
+    {
+      id: "inv_1",
+      projectId: project1.id,
+      clientId: client1.id,
+      invoiceNumber: "INV-001",
+      status: "sent",
+      issuedDate: new Date("2026-02-15"),
+      dueDate: new Date("2026-03-17"),
+      subtotal: 6562.5,
+      taxRate: 0,
+      taxAmount: 0,
+      total: 6562.5,
+      amountPaid: 0,
+      balanceDue: 6562.5,
+      clientName: client1.name,
+      clientEmail: "david@meridianhealth.com",
+      sentAt: new Date("2026-02-15"),
+    },
+    {
+      id: "inv_2",
+      projectId: project1.id,
+      clientId: client1.id,
+      invoiceNumber: "INV-002",
+      status: "overdue",
+      issuedDate: new Date("2026-01-28"),
+      dueDate: new Date("2026-02-27"),
+      subtotal: 4200,
+      taxRate: 0,
+      taxAmount: 0,
+      total: 4200,
+      amountPaid: 2100,
+      balanceDue: 2100,
+      clientName: client1.name,
+      clientEmail: "david@meridianhealth.com",
+      sentAt: new Date("2026-01-28"),
+    },
+    {
+      id: "inv_3",
+      projectId: project1.id,
+      clientId: client2.id,
+      invoiceNumber: "INV-003",
+      status: "paid",
+      issuedDate: new Date("2026-01-15"),
+      dueDate: new Date("2026-02-14"),
+      subtotal: 4800,
+      taxRate: 0,
+      taxAmount: 0,
+      total: 4800,
+      amountPaid: 4800,
+      balanceDue: 0,
+      clientName: client2.name,
+      clientEmail: "priya@luminancecoffee.com",
+      sentAt: new Date("2026-01-15"),
+    },
+    {
+      id: "inv_4",
+      projectId: project1.id,
+      clientId: client1.id,
+      invoiceNumber: "INV-004",
+      status: "draft",
+      issuedDate: null,
+      dueDate: new Date("2026-04-15"),
+      subtotal: 3000,
+      taxRate: 10,
+      taxAmount: 300,
+      total: 3300,
+      amountPaid: 0,
+      balanceDue: 3300,
+      clientName: client1.name,
+      clientEmail: "david@meridianhealth.com",
+      sentAt: null,
+    },
+  ];
+
+  for (const inv of invoicesData) {
+    await prisma.invoice.upsert({
+      where: { id: inv.id },
+      update: {},
+      create: {
+        ...inv,
+        userId: user.id,
+        currency: "USD",
+      },
+    });
+  }
+
+  console.log(`Seeded ${invoicesData.length} invoices`);
 }
 
 main()
