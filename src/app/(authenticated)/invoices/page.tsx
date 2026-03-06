@@ -22,6 +22,7 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
+import { generateInvoicePdf } from "@/lib/generate-invoice-pdf";
 
 interface Invoice {
   id: string;
@@ -454,14 +455,14 @@ export default function InvoicesPage() {
     });
   }
 
-  // Download as JSON (simple export)
+  // Download as PDF
   function handleDownload(invoice: Invoice) {
     setActiveMenu(null);
-    const data = {
+    const doc = generateInvoicePdf({
       invoiceNumber: invoice.invoiceNumber,
-      client: invoice.clientName,
-      email: invoice.clientEmail,
-      project: invoice.project?.name,
+      clientName: invoice.clientName,
+      clientEmail: invoice.clientEmail,
+      projectName: invoice.project?.name,
       issuedDate: invoice.issuedDate,
       dueDate: invoice.dueDate,
       subtotal: invoice.subtotal,
@@ -471,18 +472,11 @@ export default function InvoicesPage() {
       amountPaid: invoice.amountPaid,
       balanceDue: invoice.balanceDue,
       status: invoice.status,
+      currency: invoice.currency,
       notes: invoice.notes,
       paymentInstructions: invoice.paymentInstructions,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${invoice.invoiceNumber}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    doc.save(`${invoice.invoiceNumber}.pdf`);
     toast("success", `${invoice.invoiceNumber} downloaded.`);
   }
 
