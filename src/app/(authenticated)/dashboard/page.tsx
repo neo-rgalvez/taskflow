@@ -13,8 +13,9 @@ import {
   ArrowRight,
   Activity,
   Building,
+  DollarSign,
 } from "lucide-react";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatCurrency } from "@/lib/format";
 import Link from "next/link";
 
 interface DashboardStats {
@@ -24,6 +25,7 @@ interface DashboardStats {
   billableHours: number;
   totalTasks: number;
   upcomingDeadlines: number;
+  billedThisMonth: number;
 }
 
 interface DashboardProject {
@@ -132,9 +134,10 @@ export default function DashboardPage() {
       ) : (
         <>
           {/* Stat Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
             {showSkeleton || statsLoading ? (
               <>
+                <StatCardSkeleton />
                 <StatCardSkeleton />
                 <StatCardSkeleton />
                 <StatCardSkeleton />
@@ -180,6 +183,15 @@ export default function DashboardPage() {
                   </div>
                   <p className="text-4xl font-bold text-gray-900 font-mono mt-2">{stats?.upcomingDeadlines ?? 0}</p>
                   <p className="text-sm text-gray-500 mt-1">Due in next 7 days</p>
+                </Link>
+
+                <Link href="/invoices" className="bg-white rounded-lg border border-gray-200 shadow-sm p-5 h-[140px] hover:shadow-md hover:border-gray-300 transition-all cursor-pointer">
+                  <div className="flex justify-between items-start">
+                    <p className="text-sm text-gray-500">Billed This Month</p>
+                    <DollarSign size={20} className="text-gray-400" />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 font-mono mt-2">{formatCurrency(stats?.billedThisMonth ?? 0)}</p>
+                  <p className="text-sm text-gray-500 mt-1">Total invoiced</p>
                 </Link>
               </>
             )}
