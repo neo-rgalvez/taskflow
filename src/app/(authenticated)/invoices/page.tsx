@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TableRowSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -115,6 +116,10 @@ export default function InvoicesPage() {
 
   // Action menu
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
+    null
+  );
+  const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Create modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -211,12 +216,19 @@ export default function InvoicesPage() {
     fetchInvoices();
   }, [fetchInvoices]);
 
-  // Close action menu on outside click
+  // Close action menu on outside click or scroll
   useEffect(() => {
     if (!activeMenu) return;
-    const handler = () => setActiveMenu(null);
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    const close = () => {
+      setActiveMenu(null);
+      setMenuPos(null);
+    };
+    document.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
   }, [activeMenu]);
 
   // Load clients when create modal opens
@@ -638,75 +650,100 @@ export default function InvoicesPage() {
                         <td className="px-4 py-3">
                           <div className="relative">
                             <button
+                              ref={(el) => {
+                                menuButtonRefs.current[invoice.id] = el;
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setActiveMenu(
-                                  activeMenu === invoice.id ? null : invoice.id
-                                );
+                                if (activeMenu === invoice.id) {
+                                  setActiveMenu(null);
+                                  setMenuPos(null);
+                                } else {
+                                  const rect =
+                                    menuButtonRefs.current[
+                                      invoice.id
+                                    ]?.getBoundingClientRect();
+                                  if (rect) {
+                                    setMenuPos({
+                                      top: rect.bottom + 4,
+                                      left: rect.right - 208,
+                                    });
+                                  }
+                                  setActiveMenu(invoice.id);
+                                }
                               }}
                               className="p-1 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100"
                             >
                               <MoreHorizontal size={16} />
                             </button>
-                            {activeMenu === invoice.id && (
-                              <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                                {invoice.status === "draft" && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleSend(invoice);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                  >
-                                    <Send size={14} /> Mark as Sent
-                                  </button>
-                                )}
-                                {(invoice.status === "sent" ||
-                                  invoice.status === "overdue" ||
-                                  invoice.status === "partial") && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      openPaymentModal(invoice);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                  >
-                                    <DollarSign size={14} /> Record Payment
-                                  </button>
-                                )}
-                                {invoice.status === "sent" && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleMarkOverdue(invoice);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                  >
-                                    <AlertCircle size={14} /> Mark Overdue
-                                  </button>
-                                )}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDownload(invoice);
+                            {activeMenu === invoice.id &&
+                              menuPos &&
+                              createPortal(
+                                <div
+                                  className="fixed w-52 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50"
+                                  style={{
+                                    top: menuPos.top,
+                                    left: menuPos.left,
                                   }}
-                                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                 >
-                                  <Download size={14} /> Download
-                                </button>
-                                {invoice.status === "draft" && (
+                                  {invoice.status === "draft" && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSend(invoice);
+                                      }}
+                                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                      <Send size={14} /> Mark as Sent
+                                    </button>
+                                  )}
+                                  {(invoice.status === "sent" ||
+                                    invoice.status === "overdue" ||
+                                    invoice.status === "partial") && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openPaymentModal(invoice);
+                                      }}
+                                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                      <DollarSign size={14} /> Record Payment
+                                    </button>
+                                  )}
+                                  {invoice.status === "sent" && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMarkOverdue(invoice);
+                                      }}
+                                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                      <AlertCircle size={14} /> Mark Overdue
+                                    </button>
+                                  )}
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleDelete(invoice);
+                                      handleDownload(invoice);
                                     }}
-                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                   >
-                                    <Trash2 size={14} /> Delete
+                                    <Download size={14} /> Download
                                   </button>
-                                )}
-                              </div>
-                            )}
+                                  {invoice.status === "draft" && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDelete(invoice);
+                                      }}
+                                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                                    >
+                                      <Trash2 size={14} /> Delete
+                                    </button>
+                                  )}
+                                </div>,
+                                document.body
+                              )}
                           </div>
                         </td>
                       </tr>
