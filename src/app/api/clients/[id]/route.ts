@@ -139,6 +139,17 @@ export async function PATCH(
 
 /**
  * DELETE /api/clients/[id] — Delete a client and cascade
+ *
+ * Cascade behavior (via Prisma onDelete: Cascade):
+ * - Projects → Tasks → Subtasks, Comments: hard delete
+ * - Time entries: cascade-deleted with project (projectId is non-nullable)
+ * - Invoices: cascade-deleted (clientId is non-nullable)
+ *
+ * NOTE: The IMPLEMENTATION-PLAN specifies that sent/paid invoices should
+ * have clientId set to null (preserving snapshot fields), and time entries
+ * should be preserved as orphaned records. This requires a schema migration
+ * to make Invoice.clientId and TimeEntry.projectId nullable with SetNull.
+ * Until then, the UI warns about permanent data loss before deletion.
  */
 export async function DELETE(
   req: NextRequest,
@@ -148,8 +159,7 @@ export async function DELETE(
   if (auth instanceof NextResponse) return auth;
 
   try {
-    // Use deleteMany with userId to ensure ownership in a single atomic operation
-    // (avoids TOCTOU race between find and delete)
+    // Atomic ownership check + delete (avoids TOCTOU race)
     const result = await db.client.deleteMany({
       where: { id: params.id, userId: auth.userId },
     });

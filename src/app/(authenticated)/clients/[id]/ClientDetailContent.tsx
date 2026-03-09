@@ -203,20 +203,30 @@ export default function ClientDetailContent({ id }: { id: string }) {
     if (!client) return;
     if (savingRef.current) return;
 
+    // Client-side validation (mirrors Zod schema)
     const errs: Record<string, string> = {};
     const trimmedName = formData.name.trim();
     if (!trimmedName) errs.name = "Client name is required.";
     else if (trimmedName.length > 200) errs.name = "Client name is too long.";
-    if (
-      formData.email &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)
-    )
+    if (formData.contactName.trim().length > 200)
+      errs.contactName = "Contact name must be 200 characters or fewer.";
+    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim()))
       errs.email = "Please enter a valid email address.";
-    if (
-      formData.rate &&
-      (isNaN(Number(formData.rate)) || Number(formData.rate) < 0)
-    )
-      errs.rate = "Hourly rate must be a positive number.";
+    if (formData.email.trim().length > 254)
+      errs.email = "Email must be 254 characters or fewer.";
+    if (formData.phone.trim().length > 50)
+      errs.phone = "Phone must be 50 characters or fewer.";
+    if (formData.address.trim().length > 1000)
+      errs.address = "Address is too long.";
+    if (formData.notes.trim().length > 50000)
+      errs.notes = "Notes are too long.";
+    if (formData.rate) {
+      const rateNum = Number(formData.rate);
+      if (isNaN(rateNum) || rateNum < 0)
+        errs.rate = "Hourly rate must be a positive number.";
+      else if (rateNum > 99999999.99)
+        errs.rate = "Hourly rate is too large.";
+    }
     setFormErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
@@ -310,14 +320,37 @@ export default function ClientDetailContent({ id }: { id: string }) {
   async function handleDelete() {
     if (!client) return;
 
-    const summary = await apiFetch<{ activeProjectCount: number }>(
-      `/api/clients/${client.id}/summary`
-    );
-    const projectCount = summary.data?.activeProjectCount ?? 0;
+    const summaryResult = await apiFetch<{
+      activeProjectCount: number;
+      totalProjects: number;
+      draftInvoiceCount: number;
+      outstandingInvoiceAmount: number;
+      totalMinutes: number;
+    }>(`/api/clients/${client.id}/summary`);
+    const projectCount = summaryResult.data?.activeProjectCount ?? 0;
+    const draftInvoices = summaryResult.data?.draftInvoiceCount ?? 0;
+    const outstanding = summaryResult.data?.outstandingInvoiceAmount ?? 0;
+    const totalMinutes = summaryResult.data?.totalMinutes ?? 0;
 
-    const message = projectCount > 0
-      ? `This client has ${projectCount} active project${projectCount !== 1 ? "s" : ""}. Archiving is recommended. Delete anyway?\n\nThis will permanently remove this client and all associated data. This action cannot be undone.`
-      : `Are you sure you want to delete "${client.name}"? This will permanently remove this client and all associated data. This action cannot be undone.`;
+    const warnings: string[] = [];
+    if (projectCount > 0)
+      warnings.push(`${projectCount} active project${projectCount !== 1 ? "s" : ""}`);
+    if (draftInvoices > 0)
+      warnings.push(`${draftInvoices} draft invoice${draftInvoices !== 1 ? "s" : ""}`);
+    if (outstanding > 0)
+      warnings.push(`$${outstanding.toLocaleString("en-US", { minimumFractionDigits: 2 })} in outstanding invoices`);
+    if (totalMinutes > 0) {
+      const hours = Math.floor(totalMinutes / 60);
+      const mins = totalMinutes % 60;
+      warnings.push(`${hours}h ${mins}m of tracked time`);
+    }
+
+    let message: string;
+    if (warnings.length > 0) {
+      message = `This client has ${warnings.join(", ")}. Archiving is recommended. Delete anyway?\n\nThis will permanently remove this client and all associated projects, tasks, time entries, and invoices. This action cannot be undone.`;
+    } else {
+      message = `Are you sure you want to delete "${client.name}"? This will permanently remove this client and all associated data. This action cannot be undone.`;
+    }
 
     setConfirmDialog({
       open: true,
@@ -698,6 +731,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
                       setFormErrors((prev) => ({ ...prev, name: "" }));
                   }}
                   placeholder="e.g., Acme Corp"
+                  maxLength={200}
                   className={`w-full h-10 px-3 border rounded-md text-base focus:outline-none focus:ring-2 ${
                     formErrors.name
                       ? "border-red-500 focus:ring-red-200"
@@ -723,6 +757,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
                     setFormData({ ...formData, contactName: e.target.value })
                   }
                   placeholder="e.g., Jane Smith"
+                  maxLength={200}
                   className="w-full h-10 px-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
                   disabled={saving}
                 />
@@ -742,6 +777,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
                         setFormErrors((prev) => ({ ...prev, email: "" }));
                     }}
                     placeholder="e.g., jane@acme.com"
+                    maxLength={254}
                     className={`w-full h-10 px-3 border rounded-md text-base focus:outline-none focus:ring-2 ${
                       formErrors.email
                         ? "border-red-500 focus:ring-red-200"
@@ -766,6 +802,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
                       setFormData({ ...formData, phone: e.target.value })
                     }
                     placeholder="e.g., (555) 123-4567"
+                    maxLength={50}
                     className="w-full h-10 px-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
                     disabled={saving}
                   />
@@ -783,6 +820,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
                   }
                   placeholder="Full mailing address"
                   rows={2}
+                  maxLength={1000}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200 resize-none"
                   disabled={saving}
                 />
@@ -799,6 +837,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
                   }
                   placeholder="Freeform notes about this client"
                   rows={3}
+                  maxLength={50000}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200 resize-none"
                   disabled={saving}
                 />
