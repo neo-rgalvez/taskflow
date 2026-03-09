@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api";
-
+import { formatCurrency } from "@/lib/format";
 import {
   Search,
   Plus,
@@ -36,6 +36,7 @@ interface Client {
   createdAt: string;
   updatedAt: string;
   _count?: { projects: number };
+  outstandingAmount?: number;
 }
 
 interface ClientListResponse {
@@ -211,15 +212,30 @@ export default function ClientsPage() {
     e.preventDefault();
     if (savingRef.current) return;
 
-    // Client-side validation
+    // Client-side validation (mirrors server-side Zod schema)
     const errs: Record<string, string> = {};
     const trimmedName = formData.name.trim();
     if (!trimmedName) errs.name = "Client name is required.";
     else if (trimmedName.length > 200) errs.name = "Client name is too long.";
+    if (formData.contactName.trim().length > 200)
+      errs.contactName = "Contact name must be 200 characters or fewer.";
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email))
       errs.email = "Please enter a valid email address.";
-    if (formData.rate && (isNaN(Number(formData.rate)) || Number(formData.rate) < 0))
-      errs.rate = "Hourly rate must be a positive number.";
+    else if (formData.email.length > 254)
+      errs.email = "Email must be 254 characters or fewer.";
+    if (formData.phone.trim().length > 50)
+      errs.phone = "Phone must be 50 characters or fewer.";
+    if (formData.address.trim().length > 1000)
+      errs.address = "Address is too long.";
+    if (formData.notes.trim().length > 50000)
+      errs.notes = "Notes are too long.";
+    if (formData.rate) {
+      const rateNum = Number(formData.rate);
+      if (isNaN(rateNum) || rateNum < 0)
+        errs.rate = "Hourly rate must be a non-negative number.";
+      else if (rateNum > 99999999.99)
+        errs.rate = "Hourly rate is too large.";
+    }
     setFormErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
@@ -538,7 +554,7 @@ export default function ClientsPage() {
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
                         <span className="text-sm font-mono text-gray-700">
-                          —
+                          {formatCurrency(client.outstandingAmount ?? 0)}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -684,13 +700,21 @@ export default function ClientsPage() {
                 <input
                   type="text"
                   value={formData.contactName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, contactName: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData({ ...formData, contactName: e.target.value });
+                    if (formErrors.contactName) setFormErrors((prev) => ({ ...prev, contactName: "" }));
+                  }}
                   placeholder="e.g., Jane Smith"
-                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                  className={`w-full h-10 px-3 border rounded-md text-base focus:outline-none focus:ring-2 ${
+                    formErrors.contactName
+                      ? "border-red-500 focus:ring-red-200"
+                      : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
+                  }`}
                   disabled={saving}
                 />
+                {formErrors.contactName && (
+                  <p className="mt-1 text-sm text-red-600">{formErrors.contactName}</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -726,13 +750,21 @@ export default function ClientsPage() {
                   <input
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
+                    onChange={(e) => {
+                      setFormData({ ...formData, phone: e.target.value });
+                      if (formErrors.phone) setFormErrors((prev) => ({ ...prev, phone: "" }));
+                    }}
                     placeholder="e.g., (555) 123-4567"
-                    className="w-full h-10 px-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                    className={`w-full h-10 px-3 border rounded-md text-base focus:outline-none focus:ring-2 ${
+                      formErrors.phone
+                        ? "border-red-500 focus:ring-red-200"
+                        : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
+                    }`}
                     disabled={saving}
                   />
+                  {formErrors.phone && (
+                    <p className="mt-1 text-sm text-red-600">{formErrors.phone}</p>
+                  )}
                 </div>
               </div>
 
@@ -742,14 +774,22 @@ export default function ClientsPage() {
                 </label>
                 <textarea
                   value={formData.address}
-                  onChange={(e) =>
-                    setFormData({ ...formData, address: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData({ ...formData, address: e.target.value });
+                    if (formErrors.address) setFormErrors((prev) => ({ ...prev, address: "" }));
+                  }}
                   placeholder="Full mailing address"
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200 resize-none"
+                  className={`w-full px-3 py-2 border rounded-md text-base focus:outline-none focus:ring-2 resize-none ${
+                    formErrors.address
+                      ? "border-red-500 focus:ring-red-200"
+                      : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
+                  }`}
                   disabled={saving}
                 />
+                {formErrors.address && (
+                  <p className="mt-1 text-sm text-red-600">{formErrors.address}</p>
+                )}
               </div>
 
               <div>
@@ -758,14 +798,22 @@ export default function ClientsPage() {
                 </label>
                 <textarea
                   value={formData.notes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, notes: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData({ ...formData, notes: e.target.value });
+                    if (formErrors.notes) setFormErrors((prev) => ({ ...prev, notes: "" }));
+                  }}
                   placeholder="Freeform notes about this client"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200 resize-none"
+                  className={`w-full px-3 py-2 border rounded-md text-base focus:outline-none focus:ring-2 resize-none ${
+                    formErrors.notes
+                      ? "border-red-500 focus:ring-red-200"
+                      : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
+                  }`}
                   disabled={saving}
                 />
+                {formErrors.notes && (
+                  <p className="mt-1 text-sm text-red-600">{formErrors.notes}</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

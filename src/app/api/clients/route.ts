@@ -44,6 +44,10 @@ export async function GET(req: NextRequest) {
           _count: {
             select: { projects: true },
           },
+          invoices: {
+            where: { status: { in: ["sent", "overdue", "partial"] } },
+            select: { balanceDue: true },
+          },
         },
         orderBy: { name: "asc" },
         take: limit + 1,
@@ -55,9 +59,18 @@ export async function GET(req: NextRequest) {
     const hasMore = clients.length > limit;
     if (hasMore) clients.pop();
 
+    // Compute outstanding invoice totals per client
+    const data = clients.map(({ invoices, ...client }) => ({
+      ...client,
+      outstandingAmount: invoices.reduce(
+        (sum: number, inv: { balanceDue: unknown }) => sum + Number(inv.balanceDue || 0),
+        0
+      ),
+    }));
+
     return NextResponse.json({
-      data: clients,
-      nextCursor: hasMore ? clients[clients.length - 1]?.id : null,
+      data,
+      nextCursor: hasMore ? data[data.length - 1]?.id : null,
       hasMore,
       totalCount,
     });
