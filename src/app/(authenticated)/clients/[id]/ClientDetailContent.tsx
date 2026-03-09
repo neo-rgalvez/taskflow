@@ -61,6 +61,25 @@ interface Project {
   client: Client;
 }
 
+interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  status: string;
+  clientName: string;
+  total: string | number;
+  balanceDue: string | number;
+  dueDate: string;
+  createdAt: string;
+}
+
+interface TimeEntry {
+  id: string;
+  description: string | null;
+  durationMinutes: number;
+  date: string;
+  project: { id: string; name: string };
+}
+
 type Tab = "projects" | "invoices" | "activity";
 
 // Color palette for client avatars
@@ -102,6 +121,12 @@ export default function ClientDetailContent({ id }: { id: string }) {
   const [summary, setSummary] = useState<ClientSummary | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
+
+  // Invoices & activity
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(true);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
 
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -176,6 +201,51 @@ export default function ClientDetailContent({ id }: { id: string }) {
   useEffect(() => {
     fetchSummaryAndProjects();
   }, [fetchSummaryAndProjects]);
+
+  // Fetch invoices for this client
+  const fetchInvoices = useCallback(async () => {
+    setInvoicesLoading(true);
+    const result = await apiFetch<{ data: Invoice[] }>(`/api/invoices?clientId=${id}`);
+    if (result.data) {
+      setInvoices(result.data.data);
+    }
+    setInvoicesLoading(false);
+  }, [id]);
+
+  // Fetch time entries for this client (via project relation)
+  const fetchActivity = useCallback(async () => {
+    setActivityLoading(true);
+    // Get all projects for this client, then fetch time entries for each
+    const projectIds = projects.map((p) => p.id);
+    if (projectIds.length === 0) {
+      setTimeEntries([]);
+      setActivityLoading(false);
+      return;
+    }
+    const results = await Promise.all(
+      projectIds.map((pid) =>
+        apiFetch<{ data: TimeEntry[] }>(`/api/time-entries?projectId=${pid}&limit=50`)
+      )
+    );
+    const allEntries: TimeEntry[] = [];
+    for (const r of results) {
+      if (r.data) allEntries.push(...r.data.data);
+    }
+    // Sort by date descending
+    allEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    setTimeEntries(allEntries.slice(0, 50));
+    setActivityLoading(false);
+  }, [projects]);
+
+  // Fetch invoices when tab switches to invoices
+  useEffect(() => {
+    if (activeTab === "invoices") fetchInvoices();
+  }, [activeTab, fetchInvoices]);
+
+  // Fetch activity when tab switches to activity and projects are loaded
+  useEffect(() => {
+    if (activeTab === "activity" && !projectsLoading) fetchActivity();
+  }, [activeTab, projectsLoading, fetchActivity]);
 
   // Edit
   function openEditModal() {
@@ -608,7 +678,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
               headline="No projects for this client"
               description="Create a new project to start tracking work for this client."
               ctaLabel="+ Add Project"
-              ctaHref="/projects"
+              ctaHref={`/projects?clientId=${id}`}
             />
           ) : (
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -617,7 +687,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
                   Projects ({projects.length})
                 </h3>
                 <Link
-                  href="/projects"
+                  href={`/projects?clientId=${id}`}
                   className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 transition-colors"
                 >
                   + Add Project
@@ -661,20 +731,118 @@ export default function ClientDetailContent({ id }: { id: string }) {
       )}
 
       {activeTab === "invoices" && (
-        <EmptyState
-          icon="invoices"
-          headline="No invoices for this client"
-          description="Create an invoice to start billing this client."
-          ctaLabel="+ Create Invoice"
-        />
+        <>
+          {invoicesLoading ? (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 py-3">
+                  <Skeleton className="h-5 w-24 rounded" />
+                  <Skeleton className="h-5 w-20 rounded" />
+                  <Skeleton className="h-5 w-32 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : invoices.length === 0 ? (
+            <EmptyState
+              icon="invoices"
+              headline="No invoices for this client"
+              description="Create an invoice to start billing this client."
+              ctaLabel="+ Create Invoice"
+              ctaHref="/invoices"
+            />
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700">
+                  Invoices ({invoices.length})
+                </h3>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {invoices.map((inv) => (
+                  <li key={inv.id}>
+                    <Link
+                      href={`/invoices/${inv.id}`}
+                      className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <FileText size={16} className="text-gray-400 flex-shrink-0" />
+                        <span className="text-sm font-medium text-gray-900">
+                          {inv.invoiceNumber}
+                        </span>
+                        <StatusBadge status={inv.status} />
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-gray-500 flex-shrink-0">
+                        <span className="font-mono">{formatCurrency(Number(inv.total))}</span>
+                        {inv.dueDate && (
+                          <span>
+                            Due{" "}
+                            {new Date(inv.dueDate).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
 
       {activeTab === "activity" && (
-        <EmptyState
-          icon="tasks"
-          headline="No activity yet"
-          description="Activity for this client will appear here as you work."
-        />
+        <>
+          {activityLoading ? (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 py-3">
+                  <Skeleton className="h-5 w-32 rounded" />
+                  <Skeleton className="h-5 w-20 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : timeEntries.length === 0 ? (
+            <EmptyState
+              icon="tasks"
+              headline="No activity yet"
+              description="Activity for this client will appear here as you track time."
+            />
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div className="px-4 py-3 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700">
+                  Recent Activity ({timeEntries.length})
+                </h3>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {timeEntries.map((entry) => (
+                  <li key={entry.id} className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Activity size={16} className="text-gray-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {entry.description || "Time entry"}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {entry.project.name} &middot;{" "}
+                          {new Date(entry.date).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-mono text-gray-700 flex-shrink-0">
+                      {formatDuration(entry.durationMinutes)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
 
       {/* Edit Client Modal */}
