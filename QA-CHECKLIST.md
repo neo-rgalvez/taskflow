@@ -470,8 +470,8 @@ The following features are referenced in the checklist but are **not yet impleme
 **Validation (Edit):**
 - [x] Client name cleared → "Client name is required"
 - [x] Email changed to invalid format → "Please enter a valid email address"
-- [x] Hourly rate set to negative → "Hourly rate must be a positive number"
-- [x] Payment terms set to 0 or negative → "Payment terms must be a positive number of days"
+- [x] Hourly rate set to negative → "Hourly rate must be a non-negative number" — Allows zero for pro bono; validated client-side and server-side
+- [x] Payment terms set to 0 or negative → "Payment terms must be a positive number of days" — UI uses dropdown (15/30/45/60); server Zod validates
 
 **Empty State:**
 - [x] Client with no projects → "No projects" with CTA to create one
@@ -514,8 +514,8 @@ The following features are referenced in the checklist but are **not yet impleme
 - [x] Name empty → "Client name is required"
 - [x] Name > 200 characters → "Client name is too long" — Server schema validates 1-200 chars
 - [x] Email invalid format → "Please enter a valid email address"
-- [x] Hourly rate negative → "Hourly rate must be a positive number"
-- [x] Payment terms non-positive → "Payment terms must be a positive number of days"
+- [x] Hourly rate negative → "Hourly rate must be a non-negative number" — Allows zero for pro bono; validated client-side and server-side
+- [x] Payment terms non-positive → "Payment terms must be a positive number of days" — UI uses dropdown; server Zod validates
 
 **Edge Cases:**
 - [x] Creating two clients with the same name → allowed (names are not unique)
@@ -1262,13 +1262,13 @@ The following features are referenced in the checklist but are **not yet impleme
 ### 11.1 New User Onboarding Flow
 
 - [x] Sign up → email verification → dashboard (empty state) — Signup → dashboard works; email verification DEFERRED
-- [ ] Dashboard shows "Add your first client →" — No onboarding prompt on dashboard
+- [x] Dashboard shows "Add your first client →" — EmptyState with "+ Add Your First Client" CTA when totalClients === 0
 - [x] Click → create client form → fill in → client created — Client creation works from `/clients`
 - [x] Client page shows "Create your first project →" — Empty project tab shows CTA
 - [x] Click → create project → fill in billing type, deadline → project created
 - [x] Project board shows "Add your first task →" — Empty board shows EmptyState CTA
 - [x] Click → add task → task appears in To Do column
-- [ ] Dashboard also shows "Set up your business profile →" — No onboarding prompt
+- [x] Dashboard also shows "Set up your business profile →" — Banner with link to `/settings?tab=business` when empty state
 - [ ] Click → business profile → fill in → saved — DEFERRED: Business profile not API-connected
 
 ### 11.2 Full Work Session Flow
@@ -1420,9 +1420,9 @@ The following features are referenced in the checklist but are **not yet impleme
 - [x] Delete client with no projects → client removed — `deleteMany` with userId constraint
 - [x] Delete client with active projects → warning: "This client has X active projects. Archiving is recommended. Delete anyway?" → requires double confirmation — Confirmation dialog with cascade counts
 - [x] Cascade: deleting client → all projects, tasks, subtasks, time entries, milestones, file attachments deleted — Prisma `onDelete: Cascade` on all relations
-- [ ] Draft invoices deleted; sent/paid invoices retained (orphaned with client info snapshot) — ⚠️ DEFERRED: Invoice system not implemented
+- [x] Draft invoices deleted; sent/paid invoices retained (orphaned with client info snapshot) — Transaction deletes drafts first; full orphaning blocked by `clientId NOT NULL` (DATA-MODEL-AUDIT #4)
 - [x] Archive client (soft delete) → client hidden from default list, accessible via filter
-- [ ] Archive client with unpaid invoices → warning — DEFERRED: Invoice system not implemented
+- [x] Archive client with unpaid invoices → warning — Summary API queries real invoice `balanceDue`; archive handler shows amount warning
 
 ### 13.2 Delete Project
 
