@@ -23,6 +23,7 @@ import {
   X,
   Loader2,
   AlertCircle,
+  Clock,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -59,6 +60,28 @@ interface Project {
   budgetHours: number | null;
   deadline: string | null;
   client: Client;
+}
+
+interface InvoiceItem {
+  id: string;
+  invoiceNumber: string;
+  status: string;
+  clientName: string;
+  issuedDate: string | null;
+  dueDate: string;
+  total: string;
+  balanceDue: string;
+  project: { id: string; name: string };
+}
+
+interface TimeEntryItem {
+  id: string;
+  description: string | null;
+  durationMinutes: number;
+  startTime: string;
+  isBillable: boolean;
+  project: { id: string; name: string };
+  task: { id: string; title: string } | null;
 }
 
 type Tab = "projects" | "invoices" | "activity";
@@ -102,6 +125,12 @@ export default function ClientDetailContent({ id }: { id: string }) {
   const [summary, setSummary] = useState<ClientSummary | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
+
+  // Invoices & activity (time entries)
+  const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [timeEntries, setTimeEntries] = useState<TimeEntryItem[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
 
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -176,6 +205,58 @@ export default function ClientDetailContent({ id }: { id: string }) {
   useEffect(() => {
     fetchSummaryAndProjects();
   }, [fetchSummaryAndProjects]);
+
+  // Fetch invoices when tab switches
+  const fetchInvoices = useCallback(async () => {
+    setInvoicesLoading(true);
+    const result = await apiFetch<{ data: InvoiceItem[]; totalCount: number }>(
+      `/api/invoices?clientId=${id}`
+    );
+    if (result.data) {
+      setInvoices(result.data.data);
+    }
+    setInvoicesLoading(false);
+  }, [id]);
+
+  // Fetch time entries for activity tab
+  const fetchActivity = useCallback(async () => {
+    setActivityLoading(true);
+    // Get time entries across all of this client's projects
+    const projectIds = projects.map((p) => p.id);
+    if (projectIds.length === 0) {
+      setTimeEntries([]);
+      setActivityLoading(false);
+      return;
+    }
+    // Fetch time entries for each project (use first project's API, or fetch all)
+    const results = await Promise.all(
+      projectIds.map((pid) =>
+        apiFetch<{ data: TimeEntryItem[]; totalCount: number }>(
+          `/api/time-entries?projectId=${pid}&limit=10`
+        )
+      )
+    );
+    const allEntries: TimeEntryItem[] = [];
+    for (const r of results) {
+      if (r.data) allEntries.push(...r.data.data);
+    }
+    // Sort by most recent first
+    allEntries.sort(
+      (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+    );
+    setTimeEntries(allEntries.slice(0, 25));
+    setActivityLoading(false);
+  }, [projects]);
+
+  // Lazy-load tab data
+  useEffect(() => {
+    if (activeTab === "invoices" && invoices.length === 0 && !invoicesLoading) {
+      fetchInvoices();
+    }
+    if (activeTab === "activity" && timeEntries.length === 0 && !activityLoading) {
+      fetchActivity();
+    }
+  }, [activeTab, invoices.length, invoicesLoading, fetchInvoices, timeEntries.length, activityLoading, fetchActivity]);
 
   // Edit
   function openEditModal() {
@@ -629,7 +710,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
               headline="No projects for this client"
               description="Create a new project to start tracking work for this client."
               ctaLabel="+ Add Project"
-              ctaHref="/projects"
+              ctaHref={`/projects?newProject=true&clientId=${id}`}
             />
           ) : (
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -638,7 +719,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
                   Projects ({projects.length})
                 </h3>
                 <Link
-                  href="/projects"
+                  href={`/projects?newProject=true&clientId=${id}`}
                   className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 transition-colors"
                 >
                   + Add Project
@@ -682,20 +763,132 @@ export default function ClientDetailContent({ id }: { id: string }) {
       )}
 
       {activeTab === "invoices" && (
-        <EmptyState
-          icon="invoices"
-          headline="No invoices for this client"
-          description="Create an invoice to start billing this client."
-          ctaLabel="+ Create Invoice"
-        />
+        <>
+          {invoicesLoading ? (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 py-3">
+                  <Skeleton className="h-5 w-24 rounded" />
+                  <Skeleton className="h-5 w-32 rounded" />
+                  <Skeleton className="h-5 w-20 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : invoices.length === 0 ? (
+            <EmptyState
+              icon="invoices"
+              headline="No invoices for this client"
+              description="Create an invoice to start billing this client."
+              ctaLabel="+ Create Invoice"
+              ctaHref="/invoices"
+            />
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div className="px-4 py-3 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700">
+                  Invoices ({invoices.length})
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left px-4 py-2 text-xs font-medium uppercase text-gray-500">#</th>
+                      <th className="text-left px-4 py-2 text-xs font-medium uppercase text-gray-500">Project</th>
+                      <th className="text-left px-4 py-2 text-xs font-medium uppercase text-gray-500">Status</th>
+                      <th className="text-right px-4 py-2 text-xs font-medium uppercase text-gray-500">Total</th>
+                      <th className="text-right px-4 py-2 text-xs font-medium uppercase text-gray-500">Balance</th>
+                      <th className="text-left px-4 py-2 text-xs font-medium uppercase text-gray-500">Due</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {invoices.map((inv) => (
+                      <tr key={inv.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5 text-sm font-mono text-gray-800">{inv.invoiceNumber}</td>
+                        <td className="px-4 py-2.5 text-sm text-gray-600">{inv.project?.name || "—"}</td>
+                        <td className="px-4 py-2.5"><StatusBadge status={inv.status} /></td>
+                        <td className="px-4 py-2.5 text-sm font-mono text-gray-800 text-right">
+                          {formatCurrency(Number(inv.total))}
+                        </td>
+                        <td className="px-4 py-2.5 text-sm font-mono text-gray-800 text-right">
+                          {Number(inv.balanceDue) > 0
+                            ? formatCurrency(Number(inv.balanceDue))
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-2.5 text-sm text-gray-500">
+                          {new Date(inv.dueDate).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {activeTab === "activity" && (
-        <EmptyState
-          icon="tasks"
-          headline="No activity yet"
-          description="Activity for this client will appear here as you work."
-        />
+        <>
+          {activityLoading ? (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 py-3">
+                  <Skeleton className="h-5 w-32 rounded" />
+                  <Skeleton className="h-5 w-48 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : timeEntries.length === 0 ? (
+            <EmptyState
+              icon="tasks"
+              headline="No activity yet"
+              description="Activity for this client will appear here as you track time on their projects."
+            />
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div className="px-4 py-3 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700">
+                  Recent Time Entries
+                </h3>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {timeEntries.map((entry) => (
+                  <li key={entry.id} className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <Clock size={14} className="text-gray-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-800 truncate">
+                          {entry.description || "No description"}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {entry.project?.name}
+                          {entry.task ? ` · ${entry.task.title}` : ""}
+                          {entry.isBillable ? " · Billable" : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 flex-shrink-0">
+                      <span className="text-sm font-mono text-gray-700">
+                        {formatDuration(entry.durationMinutes)}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(entry.startTime).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
 
       {/* Edit Client Modal */}

@@ -35,7 +35,8 @@ interface Client {
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
-  _count?: { projects: number };
+  _count?: { projects: number; invoices: number };
+  outstandingAmount?: number;
 }
 
 interface ClientListResponse {
@@ -576,7 +577,9 @@ export default function ClientsPage() {
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
                         <span className="text-sm font-mono text-gray-700">
-                          —
+                          {(client.outstandingAmount ?? 0) > 0
+                            ? `$${(client.outstandingAmount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : "—"}
                         </span>
                       </td>
                       <td className="px-4 py-3">

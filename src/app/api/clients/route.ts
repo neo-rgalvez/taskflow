@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
         where,
         include: {
           _count: {
-            select: { projects: true },
+            select: { projects: true, invoices: true },
           },
         },
         orderBy: { name: "asc" },
@@ -55,8 +55,34 @@ export async function GET(req: NextRequest) {
     const hasMore = clients.length > limit;
     if (hasMore) clients.pop();
 
+    // Compute outstanding invoice amounts per client in a single query
+    const clientIds = clients.map((c) => c.id);
+    const outstandingByClient = clientIds.length > 0
+      ? await db.invoice.groupBy({
+          by: ["clientId"],
+          where: {
+            clientId: { in: clientIds },
+            userId: auth.userId,
+            status: { in: ["sent", "overdue", "partial"] },
+          },
+          _sum: { balanceDue: true },
+        })
+      : [];
+
+    const outstandingMap = new Map(
+      outstandingByClient.map((row) => [
+        row.clientId,
+        Number(row._sum.balanceDue || 0),
+      ])
+    );
+
+    const enrichedClients = clients.map((c) => ({
+      ...c,
+      outstandingAmount: outstandingMap.get(c.id) ?? 0,
+    }));
+
     return NextResponse.json({
-      data: clients,
+      data: enrichedClients,
       nextCursor: hasMore ? clients[clients.length - 1]?.id : null,
       hasMore,
       totalCount,
