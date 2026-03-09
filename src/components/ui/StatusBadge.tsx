@@ -1,6 +1,6 @@
 "use client";
 
-import { statusColors, statusLabels } from "@/lib/mock-data";
+import { statusColors, statusLabels } from "@/lib/status";
 
 export function StatusBadge({ status }: { status: string }) {
   const colors = statusColors[status] || statusColors.active;
