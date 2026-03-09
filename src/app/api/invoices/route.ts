@@ -20,8 +20,11 @@ export async function GET(req: NextRequest) {
     100
   );
 
+  const clientId = searchParams.get("clientId") || "";
+
   const where = {
     userId: auth.userId,
+    ...(clientId ? { clientId } : {}),
     ...(status && status !== "all" ? { status } : {}),
     ...(search
       ? {

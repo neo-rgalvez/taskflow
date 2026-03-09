@@ -39,7 +39,7 @@ export const createClientSchema = z.object({
     .or(z.literal("")),
   defaultHourlyRate: z
     .number()
-    .min(0, "Hourly rate must be a positive number.")
+    .min(0, "Hourly rate must be a non-negative number.")
     .max(99999999.99, "Hourly rate is too large.")
     .optional()
     .nullable(),

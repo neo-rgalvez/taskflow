@@ -61,6 +61,25 @@ interface Project {
   client: Client;
 }
 
+interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  status: string;
+  clientName: string;
+  total: string | number;
+  balanceDue: string | number;
+  dueDate: string;
+  createdAt: string;
+}
+
+interface TimeEntry {
+  id: string;
+  description: string | null;
+  durationMinutes: number;
+  date: string;
+  project: { id: string; name: string };
+}
+
 type Tab = "projects" | "invoices" | "activity";
 
 // Color palette for client avatars
@@ -102,6 +121,12 @@ export default function ClientDetailContent({ id }: { id: string }) {
   const [summary, setSummary] = useState<ClientSummary | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
+
+  // Invoices & activity
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(true);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
 
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -177,6 +202,51 @@ export default function ClientDetailContent({ id }: { id: string }) {
     fetchSummaryAndProjects();
   }, [fetchSummaryAndProjects]);
 
+  // Fetch invoices for this client
+  const fetchInvoices = useCallback(async () => {
+    setInvoicesLoading(true);
+    const result = await apiFetch<{ data: Invoice[] }>(`/api/invoices?clientId=${id}`);
+    if (result.data) {
+      setInvoices(result.data.data);
+    }
+    setInvoicesLoading(false);
+  }, [id]);
+
+  // Fetch time entries for this client (via project relation)
+  const fetchActivity = useCallback(async () => {
+    setActivityLoading(true);
+    // Get all projects for this client, then fetch time entries for each
+    const projectIds = projects.map((p) => p.id);
+    if (projectIds.length === 0) {
+      setTimeEntries([]);
+      setActivityLoading(false);
+      return;
+    }
+    const results = await Promise.all(
+      projectIds.map((pid) =>
+        apiFetch<{ data: TimeEntry[] }>(`/api/time-entries?projectId=${pid}&limit=50`)
+      )
+    );
+    const allEntries: TimeEntry[] = [];
+    for (const r of results) {
+      if (r.data) allEntries.push(...r.data.data);
+    }
+    // Sort by date descending
+    allEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    setTimeEntries(allEntries.slice(0, 50));
+    setActivityLoading(false);
+  }, [projects]);
+
+  // Fetch invoices when tab switches to invoices
+  useEffect(() => {
+    if (activeTab === "invoices") fetchInvoices();
+  }, [activeTab, fetchInvoices]);
+
+  // Fetch activity when tab switches to activity and projects are loaded
+  useEffect(() => {
+    if (activeTab === "activity" && !projectsLoading) fetchActivity();
+  }, [activeTab, projectsLoading, fetchActivity]);
+
   // Edit
   function openEditModal() {
     if (!client) return;
@@ -207,16 +277,28 @@ export default function ClientDetailContent({ id }: { id: string }) {
     const trimmedName = formData.name.trim();
     if (!trimmedName) errs.name = "Client name is required.";
     else if (trimmedName.length > 200) errs.name = "Client name is too long.";
+    if (formData.contactName.trim().length > 200)
+      errs.contactName = "Contact name must be 200 characters or fewer.";
     if (
       formData.email &&
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)
     )
       errs.email = "Please enter a valid email address.";
-    if (
-      formData.rate &&
-      (isNaN(Number(formData.rate)) || Number(formData.rate) < 0)
-    )
-      errs.rate = "Hourly rate must be a positive number.";
+    else if (formData.email.length > 254)
+      errs.email = "Email must be 254 characters or fewer.";
+    if (formData.phone.trim().length > 50)
+      errs.phone = "Phone must be 50 characters or fewer.";
+    if (formData.address.trim().length > 1000)
+      errs.address = "Address is too long.";
+    if (formData.notes.trim().length > 50000)
+      errs.notes = "Notes are too long.";
+    if (formData.rate) {
+      const rateNum = Number(formData.rate);
+      if (isNaN(rateNum) || rateNum < 0)
+        errs.rate = "Hourly rate must be a non-negative number.";
+      else if (rateNum > 99999999.99)
+        errs.rate = "Hourly rate is too large.";
+    }
     setFormErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
@@ -596,7 +678,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
               headline="No projects for this client"
               description="Create a new project to start tracking work for this client."
               ctaLabel="+ Add Project"
-              ctaHref="/projects"
+              ctaHref={`/projects?clientId=${id}`}
             />
           ) : (
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -605,7 +687,7 @@ export default function ClientDetailContent({ id }: { id: string }) {
                   Projects ({projects.length})
                 </h3>
                 <Link
-                  href="/projects"
+                  href={`/projects?clientId=${id}`}
                   className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 transition-colors"
                 >
                   + Add Project
@@ -649,20 +731,118 @@ export default function ClientDetailContent({ id }: { id: string }) {
       )}
 
       {activeTab === "invoices" && (
-        <EmptyState
-          icon="invoices"
-          headline="No invoices for this client"
-          description="Create an invoice to start billing this client."
-          ctaLabel="+ Create Invoice"
-        />
+        <>
+          {invoicesLoading ? (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 py-3">
+                  <Skeleton className="h-5 w-24 rounded" />
+                  <Skeleton className="h-5 w-20 rounded" />
+                  <Skeleton className="h-5 w-32 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : invoices.length === 0 ? (
+            <EmptyState
+              icon="invoices"
+              headline="No invoices for this client"
+              description="Create an invoice to start billing this client."
+              ctaLabel="+ Create Invoice"
+              ctaHref="/invoices"
+            />
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700">
+                  Invoices ({invoices.length})
+                </h3>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {invoices.map((inv) => (
+                  <li key={inv.id}>
+                    <Link
+                      href={`/invoices/${inv.id}`}
+                      className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <FileText size={16} className="text-gray-400 flex-shrink-0" />
+                        <span className="text-sm font-medium text-gray-900">
+                          {inv.invoiceNumber}
+                        </span>
+                        <StatusBadge status={inv.status} />
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-gray-500 flex-shrink-0">
+                        <span className="font-mono">{formatCurrency(Number(inv.total))}</span>
+                        {inv.dueDate && (
+                          <span>
+                            Due{" "}
+                            {new Date(inv.dueDate).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
 
       {activeTab === "activity" && (
-        <EmptyState
-          icon="tasks"
-          headline="No activity yet"
-          description="Activity for this client will appear here as you work."
-        />
+        <>
+          {activityLoading ? (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 py-3">
+                  <Skeleton className="h-5 w-32 rounded" />
+                  <Skeleton className="h-5 w-20 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : timeEntries.length === 0 ? (
+            <EmptyState
+              icon="tasks"
+              headline="No activity yet"
+              description="Activity for this client will appear here as you track time."
+            />
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div className="px-4 py-3 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700">
+                  Recent Activity ({timeEntries.length})
+                </h3>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {timeEntries.map((entry) => (
+                  <li key={entry.id} className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Activity size={16} className="text-gray-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {entry.description || "Time entry"}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {entry.project.name} &middot;{" "}
+                          {new Date(entry.date).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-mono text-gray-700 flex-shrink-0">
+                      {formatDuration(entry.durationMinutes)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
 
       {/* Edit Client Modal */}
@@ -719,13 +899,21 @@ export default function ClientDetailContent({ id }: { id: string }) {
                 <input
                   type="text"
                   value={formData.contactName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, contactName: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData({ ...formData, contactName: e.target.value });
+                    if (formErrors.contactName) setFormErrors((prev) => ({ ...prev, contactName: "" }));
+                  }}
                   placeholder="e.g., Jane Smith"
-                  className="w-full h-10 px-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                  className={`w-full h-10 px-3 border rounded-md text-base focus:outline-none focus:ring-2 ${
+                    formErrors.contactName
+                      ? "border-red-500 focus:ring-red-200"
+                      : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
+                  }`}
                   disabled={saving}
                 />
+                {formErrors.contactName && (
+                  <p className="mt-1 text-sm text-red-600">{formErrors.contactName}</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -762,13 +950,21 @@ export default function ClientDetailContent({ id }: { id: string }) {
                   <input
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
-                    }
+                    onChange={(e) => {
+                      setFormData({ ...formData, phone: e.target.value });
+                      if (formErrors.phone) setFormErrors((prev) => ({ ...prev, phone: "" }));
+                    }}
                     placeholder="e.g., (555) 123-4567"
-                    className="w-full h-10 px-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                    className={`w-full h-10 px-3 border rounded-md text-base focus:outline-none focus:ring-2 ${
+                      formErrors.phone
+                        ? "border-red-500 focus:ring-red-200"
+                        : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
+                    }`}
                     disabled={saving}
                   />
+                  {formErrors.phone && (
+                    <p className="mt-1 text-sm text-red-600">{formErrors.phone}</p>
+                  )}
                 </div>
               </div>
 
@@ -778,14 +974,22 @@ export default function ClientDetailContent({ id }: { id: string }) {
                 </label>
                 <textarea
                   value={formData.address}
-                  onChange={(e) =>
-                    setFormData({ ...formData, address: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData({ ...formData, address: e.target.value });
+                    if (formErrors.address) setFormErrors((prev) => ({ ...prev, address: "" }));
+                  }}
                   placeholder="Full mailing address"
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200 resize-none"
+                  className={`w-full px-3 py-2 border rounded-md text-base focus:outline-none focus:ring-2 resize-none ${
+                    formErrors.address
+                      ? "border-red-500 focus:ring-red-200"
+                      : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
+                  }`}
                   disabled={saving}
                 />
+                {formErrors.address && (
+                  <p className="mt-1 text-sm text-red-600">{formErrors.address}</p>
+                )}
               </div>
 
               <div>
@@ -794,14 +998,22 @@ export default function ClientDetailContent({ id }: { id: string }) {
                 </label>
                 <textarea
                   value={formData.notes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, notes: e.target.value })
-                  }
+                  onChange={(e) => {
+                    setFormData({ ...formData, notes: e.target.value });
+                    if (formErrors.notes) setFormErrors((prev) => ({ ...prev, notes: "" }));
+                  }}
                   placeholder="Freeform notes about this client"
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200 resize-none"
+                  className={`w-full px-3 py-2 border rounded-md text-base focus:outline-none focus:ring-2 resize-none ${
+                    formErrors.notes
+                      ? "border-red-500 focus:ring-red-200"
+                      : "border-gray-300 focus:border-primary-500 focus:ring-primary-200"
+                  }`}
                   disabled={saving}
                 />
+                {formErrors.notes && (
+                  <p className="mt-1 text-sm text-red-600">{formErrors.notes}</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

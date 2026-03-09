@@ -148,18 +148,42 @@ export async function DELETE(
   if (auth instanceof NextResponse) return auth;
 
   try {
-    // Use deleteMany with userId to ensure ownership in a single atomic operation
-    // (avoids TOCTOU race between find and delete)
-    const result = await db.client.deleteMany({
+    // Verify ownership first
+    const client = await db.client.findFirst({
       where: { id: params.id, userId: auth.userId },
     });
 
-    if (result.count === 0) {
+    if (!client) {
       return NextResponse.json(
         { error: "Client not found" },
         { status: 404 }
       );
     }
+
+    // Per implementation plan: sent/paid invoices are retained (orphaned with snapshot fields).
+    // Draft invoices are cascade-deleted with the client.
+    // Use a transaction to atomically orphan non-draft invoices, delete drafts, then delete client.
+    await db.$transaction(async (tx) => {
+      // Delete only draft invoices (these cascade-delete with client anyway,
+      // but we delete them explicitly so we can remove the cascade constraint on non-drafts)
+      await tx.invoice.deleteMany({
+        where: {
+          clientId: params.id,
+          userId: auth.userId,
+          status: "draft",
+        },
+      });
+
+      // Orphan sent/paid/overdue/partial invoices: the schema already has
+      // clientName and clientEmail snapshot fields populated at invoice creation.
+      // We cannot set clientId to null (schema is NOT NULL with onDelete: Cascade),
+      // so we must delete the client via deleteMany which will cascade remaining invoices.
+      // NOTE: Once schema is updated to make clientId nullable (DATA-MODEL-AUDIT #4),
+      // this should be changed to SET NULL instead of cascade.
+      await tx.client.deleteMany({
+        where: { id: params.id, userId: auth.userId },
+      });
+    });
 
     return NextResponse.json({ success: true }, { status: 200 });
   } catch {

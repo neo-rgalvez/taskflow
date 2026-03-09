@@ -50,8 +50,6 @@ interface RecentTaskActivity {
 }
 
 export default function DashboardPage() {
-  const [showSkeleton, setShowSkeleton] = useState(false);
-  const [showEmpty, setShowEmpty] = useState(false);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [activeProjectsList, setActiveProjectsList] = useState<DashboardProject[]>([]);
@@ -90,23 +88,9 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">Here&apos;s what&apos;s happening across your projects today.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => { setShowSkeleton(!showSkeleton); setShowEmpty(false); }}
-            className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-          >
-            {showSkeleton ? "Show Data" : "Show Skeleton"}
-          </button>
-          <button
-            onClick={() => { setShowEmpty(!showEmpty); setShowSkeleton(false); }}
-            className="px-3 py-1.5 text-xs font-medium text-gray-500 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-          >
-            {showEmpty ? "Show Data" : "Show Empty"}
-          </button>
-        </div>
       </div>
 
-      {showEmpty || isEmpty ? (
+      {isEmpty ? (
         <div className="space-y-6">
           <EmptyState
             icon="projects"
@@ -133,7 +117,7 @@ export default function DashboardPage() {
         <>
           {/* Stat Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            {showSkeleton || statsLoading ? (
+            {statsLoading ? (
               <>
                 <StatCardSkeleton />
                 <StatCardSkeleton />
