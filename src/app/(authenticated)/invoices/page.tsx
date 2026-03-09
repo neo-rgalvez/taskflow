@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api";
-import { statusLabels } from "@/lib/mock-data";
+import { statusLabels } from "@/lib/status";
 import {
   Search,
   Plus,

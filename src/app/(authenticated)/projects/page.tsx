@@ -8,7 +8,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatCurrency } from "@/lib/format";
-import { statusLabels } from "@/lib/mock-data";
+import { statusLabels } from "@/lib/status";
 
 import {
   Search,
@@ -652,7 +652,7 @@ export default function ProjectsPage() {
                             />
                           </div>
                           <p className="text-xs text-gray-400 mt-1 font-mono">
-                            0 / {project.budgetHours} hrs
+                            {trackedHours.toFixed(1)} / {project.budgetHours} hrs
                           </p>
                         </div>
                       )}
