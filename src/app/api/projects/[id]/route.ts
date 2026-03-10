@@ -60,7 +60,7 @@ export async function PATCH(
     );
   }
 
-  const { updatedAt: projectUpdatedAt, ...updateData } = parsed.data;
+  const { updatedAt: projectUpdatedAt, forceComplete, ...updateData } = parsed.data;
 
   // Status transition guard: Cancelled cannot be reopened
   if (updateData.status) {
@@ -90,6 +90,27 @@ export async function PATCH(
         },
         { status: 422 }
       );
+    }
+
+    // Warn when marking project as completed with non-done tasks
+    if (updateData.status === "completed" && current.status !== "completed" && !forceComplete) {
+      const nonDoneCount = await db.task.count({
+        where: {
+          projectId: params.id,
+          userId: auth.userId,
+          status: { not: "done" },
+        },
+      });
+      if (nonDoneCount > 0) {
+        return NextResponse.json(
+          {
+            error: `This project has ${nonDoneCount} task${nonDoneCount === 1 ? "" : "s"} not marked as done. Save again to confirm.`,
+            nonDoneTaskCount: nonDoneCount,
+            requiresConfirmation: true,
+          },
+          { status: 422 }
+        );
+      }
     }
   }
 

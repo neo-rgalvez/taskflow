@@ -104,6 +104,7 @@ export const updateProjectSchema = z
       .nullable()
       .or(z.literal("")),
     updatedAt: z.string().datetime("Invalid timestamp for optimistic locking."),
+    forceComplete: z.boolean().optional(),
   });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
