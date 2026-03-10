@@ -684,7 +684,13 @@ export default function ProjectsPage() {
                               {budgetPercent}%
                             </span>
                           </div>
-                          <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-1.5 bg-gray-200 rounded-full overflow-hidden"
+                            role="progressbar"
+                            aria-valuenow={budgetPercent}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                          >
                             <div
                               className={`h-full rounded-full transition-all ${
                                 budgetPercent >= 100
