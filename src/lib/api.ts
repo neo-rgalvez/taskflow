@@ -2,6 +2,10 @@
  * Typed fetch wrapper for client-side API calls.
  * Handles JSON parsing, error responses, and 401 detection.
  */
+
+// Guard against parallel 401 responses all trying to redirect at once
+let redirectingTo401 = false;
+
 export async function apiFetch<T>(
   url: string,
   options?: RequestInit
@@ -15,10 +19,12 @@ export async function apiFetch<T>(
       ...options,
     });
 
-    // Handle 401 — redirect to login via full page load
+    // Handle 401 — redirect to login via full page load.
+    // The server's 401 response also clears the stale session_token cookie
+    // so the middleware won't redirect us back here in a loop.
     if (res.status === 401) {
-      // Only redirect if not already on the login page (avoid loops)
-      if (window.location.pathname !== "/login") {
+      if (!redirectingTo401 && window.location.pathname !== "/login") {
+        redirectingTo401 = true;
         const returnUrl = encodeURIComponent(window.location.pathname);
         window.location.href = `/login?returnUrl=${returnUrl}`;
       }
