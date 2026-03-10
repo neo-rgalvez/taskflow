@@ -25,7 +25,13 @@ export async function GET(
       );
     }
 
-    const [activeProjectCount, totalProjects, totalHoursResult] = await Promise.all([
+    const [
+      activeProjectCount,
+      totalProjects,
+      totalHoursResult,
+      draftInvoiceCount,
+      outstandingInvoices,
+    ] = await Promise.all([
       db.project.count({
         where: { clientId: params.id, userId: auth.userId, status: "active" },
       }),
@@ -39,15 +45,27 @@ export async function GET(
         },
         _sum: { durationMinutes: true },
       }),
+      db.invoice.count({
+        where: { clientId: params.id, userId: auth.userId, status: "draft" },
+      }),
+      db.invoice.aggregate({
+        where: {
+          clientId: params.id,
+          userId: auth.userId,
+          status: { in: ["sent", "overdue", "partial"] },
+        },
+        _sum: { balanceDue: true },
+      }),
     ]);
 
     const totalMinutes = totalHoursResult._sum.durationMinutes || 0;
+    const outstandingInvoiceAmount = Number(outstandingInvoices._sum.balanceDue || 0);
 
     return NextResponse.json({
       activeProjectCount,
       totalProjects,
-      draftInvoiceCount: 0,
-      outstandingInvoiceAmount: 0,
+      draftInvoiceCount,
+      outstandingInvoiceAmount,
       totalMinutes,
     });
   } catch {

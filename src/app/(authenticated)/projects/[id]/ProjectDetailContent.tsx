@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PriorityBadge } from "@/components/ui/PriorityBadge";
 import { KanbanColumnSkeleton } from "@/components/ui/Skeleton";
@@ -16,10 +16,33 @@ import {
   Trash2,
   Loader2,
   Send,
+  GripVertical,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatDuration } from "@/lib/format";
 import Link from "next/link";
+
+// @dnd-kit imports
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+  type DragOverEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useDroppable } from "@dnd-kit/core";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -105,6 +128,7 @@ export default function ProjectDetailContent({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [inlineCreating, setInlineCreating] = useState<string | null>(null); // column key
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
   // ─── Data Fetching ──────────────────────────────────────────────────────────
 
@@ -140,6 +164,14 @@ export default function ProjectDetailContent({ id }: { id: string }) {
     return () => window.removeEventListener("focus", onFocus);
   }, [fetchTasks]);
 
+  // 30s polling interval for stale data sync
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchTasks();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [fetchTasks]);
+
   // ─── Task Mutations ─────────────────────────────────────────────────────────
 
   const updateTaskInList = useCallback((taskId: string, updates: Partial<TaskData>) => {
@@ -149,26 +181,30 @@ export default function ProjectDetailContent({ id }: { id: string }) {
   }, []);
 
   const handleStatusChange = useCallback(
-    async (taskId: string, newStatus: string) => {
+    async (taskId: string, newStatus: string, newPosition?: number) => {
       const task = tasks.find((t) => t.id === taskId);
       if (!task || task.status === newStatus) return;
 
       const oldStatus = task.status;
+      const oldPosition = task.position;
       // Optimistic
-      updateTaskInList(taskId, { status: newStatus });
+      updateTaskInList(taskId, {
+        status: newStatus,
+        position: newPosition ?? task.position,
+      });
 
       const res = await apiFetch(`/api/tasks/${taskId}/position`, {
         method: "PATCH",
         body: JSON.stringify({
           status: newStatus,
-          position: task.position,
+          position: newPosition ?? task.position,
           updatedAt: task.updatedAt,
         }),
       });
 
       if (res.error) {
         // Revert
-        updateTaskInList(taskId, { status: oldStatus });
+        updateTaskInList(taskId, { status: oldStatus, position: oldPosition });
         if (res.status === 409) {
           toast("warning", "Task was modified. Refreshing...");
           fetchTasks();
@@ -183,14 +219,151 @@ export default function ProjectDetailContent({ id }: { id: string }) {
     [tasks, updateTaskInList, fetchTasks, toast]
   );
 
+  // ─── Drag and Drop ───────────────────────────────────────────────────────────
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const activeTask = useMemo(
+    () => (activeTaskId ? tasks.find((t) => t.id === activeTaskId) ?? null : null),
+    [activeTaskId, tasks]
+  );
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveTaskId(event.active.id as string);
+  }, []);
+
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { active, over } = event;
+      if (!over) return;
+
+      const activeId = active.id as string;
+      const overId = over.id as string;
+
+      const activeTaskItem = tasks.find((t) => t.id === activeId);
+      if (!activeTaskItem) return;
+
+      // Determine target column
+      // over.id could be a column key or another task id
+      const overTask = tasks.find((t) => t.id === overId);
+      const targetColumn = overTask ? overTask.status : overId;
+
+      // Check if target is a valid column
+      if (!columns.some((c) => c.key === targetColumn)) return;
+
+      // Move task to new column optimistically during drag
+      if (activeTaskItem.status !== targetColumn) {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === activeId ? { ...t, status: targetColumn } : t
+          )
+        );
+      }
+    },
+    [tasks]
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      setActiveTaskId(null);
+
+      if (!over) return;
+
+      const activeId = active.id as string;
+      const overId = over.id as string;
+
+      const task = tasks.find((t) => t.id === activeId);
+      if (!task) return;
+
+      // Determine the drop target column
+      const overTask = tasks.find((t) => t.id === overId);
+      const targetColumn = overTask ? overTask.status : overId;
+
+      if (!columns.some((c) => c.key === targetColumn)) return;
+
+      // Calculate new position within the target column
+      const columnTasks = tasks
+        .filter((t) => t.status === targetColumn && t.id !== activeId)
+        .sort((a, b) => a.position - b.position);
+
+      let newPosition: number;
+      if (overTask && overTask.id !== activeId) {
+        // Dropped on a specific task - insert at that position
+        const overIndex = columnTasks.findIndex((t) => t.id === overId);
+        if (overIndex >= 0) {
+          newPosition = overIndex;
+        } else {
+          newPosition = columnTasks.length;
+        }
+      } else {
+        // Dropped on the column itself (empty area) - add to end
+        newPosition = columnTasks.length;
+      }
+
+      // If status didn't change and position didn't change, no-op
+      if (task.status === targetColumn && task.position === newPosition) return;
+
+      // Find the original task data (before drag modifications)
+      // We need the original status for the API call comparison
+      const originalTask = tasks.find((t) => t.id === activeId);
+      if (!originalTask) return;
+
+      // Fire the status change with position
+      const doUpdate = async () => {
+        // Optimistic update already happened during drag
+        updateTaskInList(activeId, { status: targetColumn, position: newPosition });
+
+        const res = await apiFetch(`/api/tasks/${activeId}/position`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: targetColumn,
+            position: newPosition,
+            updatedAt: originalTask.updatedAt,
+          }),
+        });
+
+        if (res.error) {
+          if (res.status === 409) {
+            toast("warning", "Task was modified. Refreshing...");
+          } else {
+            toast("error", res.error);
+          }
+          fetchTasks();
+        } else {
+          fetchTasks();
+        }
+      };
+
+      doUpdate();
+    },
+    [tasks, updateTaskInList, fetchTasks, toast]
+  );
+
+  const handleDragCancel = useCallback(() => {
+    setActiveTaskId(null);
+    fetchTasks(); // Reset to server state
+  }, [fetchTasks]);
+
   // ─── Computed ───────────────────────────────────────────────────────────────
 
-  const tasksByColumn = columns.map((col) => ({
-    ...col,
-    tasks: tasks
-      .filter((t) => t.status === col.key)
-      .sort((a, b) => a.position - b.position),
-  }));
+  const tasksByColumn = useMemo(
+    () =>
+      columns.map((col) => ({
+        ...col,
+        tasks: tasks
+          .filter((t) => t.status === col.key)
+          .sort((a, b) => a.position - b.position),
+      })),
+    [tasks]
+  );
 
   const totalTrackedMinutes = tasks.reduce((sum, t) => sum + t.totalMinutes, 0);
 
@@ -297,25 +470,41 @@ export default function ProjectDetailContent({ id }: { id: string }) {
           onCta={() => setInlineCreating("todo")}
         />
       ) : (
-        /* Kanban Board */
-        <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0">
-          {tasksByColumn.map((column) => (
-            <KanbanColumn
-              key={column.key}
-              column={column}
-              isCreating={inlineCreating === column.key}
-              onStartCreate={() => setInlineCreating(column.key)}
-              onCancelCreate={() => setInlineCreating(null)}
-              onTaskCreated={(task) => {
-                setTasks((prev) => [...prev, task]);
-                setInlineCreating(null);
-              }}
-              onTaskClick={(taskId) => setSelectedTaskId(taskId)}
-              onStatusChange={handleStatusChange}
-              projectId={id}
-            />
-          ))}
-        </div>
+        /* Kanban Board with Drag and Drop */
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0">
+            {tasksByColumn.map((column) => (
+              <KanbanColumn
+                key={column.key}
+                column={column}
+                isCreating={inlineCreating === column.key}
+                onStartCreate={() => setInlineCreating(column.key)}
+                onCancelCreate={() => setInlineCreating(null)}
+                onTaskCreated={(task) => {
+                  setTasks((prev) => [...prev, task]);
+                  setInlineCreating(null);
+                }}
+                onTaskClick={(taskId) => setSelectedTaskId(taskId)}
+                onStatusChange={handleStatusChange}
+                projectId={id}
+              />
+            ))}
+          </div>
+
+          {/* Drag Overlay - shows a ghost of the dragged card */}
+          <DragOverlay dropAnimation={null}>
+            {activeTask ? (
+              <TaskCardOverlay task={activeTask} />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
 
       {/* Task Detail Slide-Over */}
@@ -345,7 +534,7 @@ interface KanbanColumnProps {
   onCancelCreate: () => void;
   onTaskCreated: (task: TaskData) => void;
   onTaskClick: (taskId: string) => void;
-  onStatusChange: (taskId: string, newStatus: string) => void;
+  onStatusChange: (taskId: string, newStatus: string, newPosition?: number) => void;
   projectId: string;
 }
 
@@ -359,8 +548,22 @@ function KanbanColumn({
   onStatusChange,
   projectId,
 }: KanbanColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: column.key,
+  });
+
+  const taskIds = useMemo(
+    () => column.tasks.map((t) => t.id),
+    [column.tasks]
+  );
+
   return (
-    <div className="bg-gray-50 rounded-lg p-3 min-w-[280px] sm:min-w-[300px] flex-1">
+    <div
+      ref={setNodeRef}
+      className={`bg-gray-50 rounded-lg p-3 min-w-[280px] sm:min-w-[300px] flex-1 transition-colors ${
+        isOver ? "bg-primary-50 ring-2 ring-primary-300" : ""
+      }`}
+    >
       {/* Column Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
@@ -379,17 +582,19 @@ function KanbanColumn({
         </button>
       </div>
 
-      {/* Task Cards */}
-      <div className="space-y-2 max-h-[calc(100vh-320px)] overflow-y-auto">
-        {column.tasks.map((task) => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            onClick={() => onTaskClick(task.id)}
-            onStatusChange={onStatusChange}
-          />
-        ))}
-      </div>
+      {/* Sortable Task Cards */}
+      <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+        <div className="space-y-2 max-h-[calc(100vh-320px)] overflow-y-auto min-h-[40px]">
+          {column.tasks.map((task) => (
+            <SortableTaskCard
+              key={task.id}
+              task={task}
+              onClick={() => onTaskClick(task.id)}
+              onStatusChange={onStatusChange}
+            />
+          ))}
+        </div>
+      </SortableContext>
 
       {/* Inline Create */}
       {isCreating && (
@@ -404,34 +609,142 @@ function KanbanColumn({
   );
 }
 
-// ─── Task Card ──────────────────────────────────────────────────────────────────
+// ─── Sortable Task Card ─────────────────────────────────────────────────────────
 
-function TaskCard({
+function SortableTaskCard({
   task,
   onClick,
   onStatusChange,
 }: {
   task: TaskData;
   onClick: () => void;
-  onStatusChange: (taskId: string, newStatus: string) => void;
+  onStatusChange: (taskId: string, newStatus: string, newPosition?: number) => void;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
   const completedSubtasks = task.subtasks.filter((s) => s.isCompleted).length;
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+      ref={setNodeRef}
+      style={style}
       className={`w-full text-left bg-white rounded-lg border border-gray-200 p-3 border-l-[3px] ${
         priorityBorderColor[task.priority] || "border-l-gray-400"
-      } hover:shadow-md hover:border-gray-300 transition-all cursor-pointer`}
+      } hover:shadow-md hover:border-gray-300 transition-all group ${
+        isDragging ? "opacity-30 shadow-lg" : ""
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        {/* Drag Handle */}
+        <button
+          className="mt-0.5 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing touch-none flex-shrink-0 hidden sm:block"
+          {...attributes}
+          {...listeners}
+          aria-label="Drag to reorder"
+        >
+          <GripVertical size={14} />
+        </button>
+
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={onClick}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+          className="flex-1 min-w-0 cursor-pointer"
+        >
+          <p className="text-sm font-medium text-gray-800 line-clamp-2 mb-2">
+            {task.title}
+          </p>
+
+          {/* Metadata */}
+          <div className="flex items-center gap-3 text-xs text-gray-400 mb-2">
+            {task.subtasks.length > 0 && (
+              <span className="flex items-center gap-1">
+                <CheckSquare size={12} />
+                {completedSubtasks}/{task.subtasks.length}
+              </span>
+            )}
+            {task.commentCount > 0 && (
+              <span className="flex items-center gap-1">
+                <MessageSquare size={12} />
+                {task.commentCount}
+              </span>
+            )}
+            {task.totalMinutes > 0 && (
+              <span className="flex items-center gap-1">
+                <Clock size={12} />
+                {formatDuration(task.totalMinutes)}
+              </span>
+            )}
+          </div>
+
+          {/* Due date and Priority */}
+          <div className="flex items-center justify-between">
+            {task.dueDate ? (
+              <span
+                className={`text-xs flex items-center gap-1 ${
+                  new Date(task.dueDate) < new Date()
+                    ? "text-red-500 font-medium"
+                    : "text-gray-400"
+                }`}
+              >
+                <CalendarDays size={12} />
+                {formatDate(task.dueDate.split("T")[0])}
+              </span>
+            ) : (
+              <span />
+            )}
+            <div className="flex items-center gap-2">
+              <PriorityBadge priority={task.priority} />
+              {/* Quick status change on mobile (where drag is harder) */}
+              <select
+                value={task.status}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  onStatusChange(task.id, e.target.value);
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="sm:hidden text-xs border border-gray-200 rounded px-1 py-0.5 bg-white"
+                aria-label="Change status"
+              >
+                {columns.map((col) => (
+                  <option key={col.key} value={col.key}>{col.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Task Card Overlay (shown during drag) ──────────────────────────────────────
+
+function TaskCardOverlay({ task }: { task: TaskData }) {
+  const completedSubtasks = task.subtasks.filter((s) => s.isCompleted).length;
+
+  return (
+    <div
+      className={`w-[280px] sm:w-[300px] text-left bg-white rounded-lg border border-primary-300 p-3 border-l-[3px] ${
+        priorityBorderColor[task.priority] || "border-l-gray-400"
+      } shadow-xl rotate-[2deg]`}
     >
       <p className="text-sm font-medium text-gray-800 line-clamp-2 mb-2">
         {task.title}
       </p>
-
-      {/* Metadata */}
       <div className="flex items-center gap-3 text-xs text-gray-400 mb-2">
         {task.subtasks.length > 0 && (
           <span className="flex items-center gap-1">
@@ -452,8 +765,6 @@ function TaskCard({
           </span>
         )}
       </div>
-
-      {/* Due date and Priority */}
       <div className="flex items-center justify-between">
         {task.dueDate ? (
           <span
@@ -469,24 +780,7 @@ function TaskCard({
         ) : (
           <span />
         )}
-        <div className="flex items-center gap-2">
-          <PriorityBadge priority={task.priority} />
-          {/* Quick status change on mobile */}
-          <select
-            value={task.status}
-            onChange={(e) => {
-              e.stopPropagation();
-              onStatusChange(task.id, e.target.value);
-            }}
-            onClick={(e) => e.stopPropagation()}
-            className="sm:hidden text-xs border border-gray-200 rounded px-1 py-0.5 bg-white"
-            aria-label="Change status"
-          >
-            {columns.map((col) => (
-              <option key={col.key} value={col.key}>{col.label}</option>
-            ))}
-          </select>
-        </div>
+        <PriorityBadge priority={task.priority} />
       </div>
     </div>
   );
@@ -580,7 +874,6 @@ function TaskDetailSlideOver({
   onTaskDeleted,
 }: {
   taskId: string;
-  projectId?: string;
   onClose: () => void;
   onTaskUpdated: (task: Partial<TaskData> & { id: string }) => void;
   onTaskDeleted: (taskId: string) => void;

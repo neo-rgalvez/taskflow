@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search")?.trim() || "";
   const status = searchParams.get("status") || "";
+  const clientId = searchParams.get("clientId") || "";
   const cursor = searchParams.get("cursor") || undefined;
   const limit = Math.min(
     Math.max(parseInt(searchParams.get("limit") || "25", 10) || 25, 1),
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
   const where = {
     userId: auth.userId,
     ...(status && status !== "all" ? { status } : {}),
+    ...(clientId ? { clientId } : {}),
     ...(search
       ? {
           OR: [
