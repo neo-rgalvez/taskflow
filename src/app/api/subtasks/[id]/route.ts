@@ -5,6 +5,7 @@ import { updateSubtaskSchema } from "@/lib/validations/task";
 
 /**
  * PATCH /api/subtasks/[id] — Toggle or update a subtask
+ * Uses atomic ownership verification to prevent TOCTOU race conditions.
  */
 export async function PATCH(
   req: NextRequest,
@@ -12,16 +13,6 @@ export async function PATCH(
 ) {
   const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
-
-  // Verify subtask belongs to user's task
-  const subtask = await db.subtask.findFirst({
-    where: { id: params.id },
-    include: { task: { select: { userId: true } } },
-  });
-
-  if (!subtask || subtask.task.userId !== auth.userId) {
-    return NextResponse.json({ error: "Subtask not found" }, { status: 404 });
-  }
 
   let body: unknown;
   try {
@@ -43,16 +34,26 @@ export async function PATCH(
   if (parsed.data.isCompleted !== undefined)
     updatePayload.isCompleted = parsed.data.isCompleted;
 
-  const updated = await db.subtask.update({
-    where: { id: params.id },
+  // Atomic: verify ownership via task.userId in a single query
+  const result = await db.subtask.updateMany({
+    where: {
+      id: params.id,
+      task: { userId: auth.userId },
+    },
     data: updatePayload,
   });
 
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Subtask not found" }, { status: 404 });
+  }
+
+  const updated = await db.subtask.findUnique({ where: { id: params.id } });
   return NextResponse.json(updated);
 }
 
 /**
  * DELETE /api/subtasks/[id] — Delete a subtask
+ * Uses atomic ownership verification to prevent TOCTOU race conditions.
  */
 export async function DELETE(
   req: NextRequest,
@@ -61,16 +62,17 @@ export async function DELETE(
   const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
-  const subtask = await db.subtask.findFirst({
-    where: { id: params.id },
-    include: { task: { select: { userId: true } } },
+  // Atomic: deleteMany with ownership constraint
+  const result = await db.subtask.deleteMany({
+    where: {
+      id: params.id,
+      task: { userId: auth.userId },
+    },
   });
 
-  if (!subtask || subtask.task.userId !== auth.userId) {
+  if (result.count === 0) {
     return NextResponse.json({ error: "Subtask not found" }, { status: 404 });
   }
-
-  await db.subtask.delete({ where: { id: params.id } });
 
   return NextResponse.json({ success: true });
 }
