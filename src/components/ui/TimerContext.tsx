@@ -10,6 +10,7 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
+import { apiFetch } from "@/lib/api";
 
 export interface TimerTask {
   id: string;
@@ -41,8 +42,8 @@ interface TimerActions {
   pause: () => void;
   /** Resume a paused timer */
   resume: () => void;
-  /** Stop the timer and return the elapsed seconds */
-  stop: () => number;
+  /** Stop the timer, save the time entry, and return the elapsed seconds */
+  stop: () => Promise<number>;
   /** Discard the current timer without saving */
   discard: () => void;
 }
@@ -119,13 +120,42 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     setIsRunning(true);
   }, []);
 
-  const stop = useCallback(() => {
+  const taskRef = useRef<TimerTask | null>(null);
+  const projectRef = useRef<TimerProject | null>(null);
+
+  useEffect(() => {
+    taskRef.current = task;
+  }, [task]);
+
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
+
+  const stop = useCallback(async () => {
     setIsRunning(false);
     setIsActive(false);
     const seconds = elapsedRef.current;
+    const durationMinutes = Math.max(1, Math.round(seconds / 60));
+    const currentProject = projectRef.current;
+    const currentTask = taskRef.current;
+
     setElapsedSeconds(0);
     setTask(null);
     setProject(null);
+
+    // Save time entry if we have a project and at least 1 minute
+    if (currentProject && seconds >= 30) {
+      await apiFetch("/api/time-entries", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: currentProject.id,
+          taskId: currentTask?.id || null,
+          durationMinutes,
+          description: `Timer: ${currentTask?.title || currentProject.name}`,
+        }),
+      });
+    }
+
     return seconds;
   }, []);
 

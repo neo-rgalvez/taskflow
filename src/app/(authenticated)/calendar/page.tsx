@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { useRouter } from "next/navigation";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -22,6 +23,8 @@ function getFirstDayOfMonth(year: number, month: number) {
 
 interface CalendarEvent {
   id: string;
+  entityId: string;
+  projectId?: string;
   title: string;
   date: string;
   type: "deadline" | "task" | "project";
@@ -44,6 +47,7 @@ interface ProjectItem {
 }
 
 export default function CalendarPage() {
+  const router = useRouter();
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(now.getMonth());
@@ -77,6 +81,8 @@ export default function CalendarPage() {
           const dateStr = task.dueDate.split("T")[0];
           calEvents.push({
             id: `task-${task.id}`,
+            entityId: task.id,
+            projectId: task.project?.id,
             title: task.title,
             date: dateStr,
             type: "task",
@@ -95,6 +101,7 @@ export default function CalendarPage() {
           if (deadlineDate >= monthStart && deadlineDate <= monthEnd) {
             calEvents.push({
               id: `project-${project.id}`,
+              entityId: project.id,
               title: `${project.name} deadline`,
               date: dateStr,
               type: "project",
@@ -243,6 +250,13 @@ export default function CalendarPage() {
                             style={{
                               backgroundColor: `${event.color}15`,
                               color: event.color,
+                            }}
+                            onClick={() => {
+                              if (event.type === "project") {
+                                router.push(`/projects/${event.entityId}`);
+                              } else if (event.type === "task" && event.projectId) {
+                                router.push(`/projects/${event.projectId}`);
+                              }
                             }}
                           >
                             {event.title}

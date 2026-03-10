@@ -36,16 +36,7 @@ export function middleware(req: NextRequest) {
   );
   const isAuthPage = authPaths.some((p) => pathname === p);
 
-  // In development mode, allow access without a session cookie
-  if (process.env.NODE_ENV === "development") {
-    // If on auth page with a session, redirect to dashboard
-    if (isAuthPage && sessionToken) {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
-    return NextResponse.next();
-  }
-
-  // Production: redirect unauthenticated users to login
+  // Redirect unauthenticated users to login
   if (isProtected && !sessionToken) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("returnUrl", pathname);

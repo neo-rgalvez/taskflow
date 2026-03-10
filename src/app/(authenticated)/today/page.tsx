@@ -30,13 +30,16 @@ export default function TodayPage() {
   const [completedIds, setCompletedIds] = useState<string[]>([]);
   const [todayMinutes, setTodayMinutes] = useState(0);
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const todayDisplay = formatDate(todayStr);
 
   const fetchTodayData = useCallback(async () => {
     setLoading(true);
 
-    // Get tasks due today or overdue (not done)
+    // Use local-time boundaries for "today"
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
     const endOfToday = new Date();
     endOfToday.setHours(23, 59, 59, 999);
 
@@ -45,7 +48,7 @@ export default function TodayPage() {
         `/api/tasks?dueBefore=${endOfToday.toISOString()}&sort=priority&order=asc&limit=50`
       ),
       apiFetch<{ totalMinutes: number }>(
-        `/api/time-entries?dateFrom=${todayStr}T00:00:00.000Z&dateTo=${endOfToday.toISOString()}&limit=1`
+        `/api/time-entries?dateFrom=${startOfToday.toISOString()}&dateTo=${endOfToday.toISOString()}&limit=1`
       ),
     ]);
 
@@ -62,7 +65,8 @@ export default function TodayPage() {
     }
 
     setLoading(false);
-  }, [todayStr]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     fetchTodayData();

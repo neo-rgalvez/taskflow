@@ -120,6 +120,7 @@ export default function ProjectsPage() {
     clientId: "",
     name: "",
     description: "",
+    status: "active" as string,
     billingType: "hourly" as "hourly" | "fixed_price",
     hourlyRate: "",
     fixedPrice: "",
@@ -230,6 +231,7 @@ export default function ProjectsPage() {
       clientId: "",
       name: "",
       description: "",
+      status: "active",
       billingType: "hourly",
       hourlyRate: "",
       fixedPrice: "",
@@ -247,6 +249,7 @@ export default function ProjectsPage() {
       clientId: project.clientId,
       name: project.name,
       description: project.description || "",
+      status: project.status,
       billingType: project.billingType as "hourly" | "fixed_price",
       hourlyRate: project.hourlyRate
         ? String(parseFloat(project.hourlyRate))
@@ -345,16 +348,34 @@ export default function ProjectsPage() {
         : null,
     };
 
+    // Include status for edits (not creates — new projects are always "active")
+    if (editingProject) {
+      payload.status = formData.status;
+    }
+
     if (editingProject) {
       // Update
       payload.updatedAt = editingProject.updatedAt;
-      const result = await apiFetch<Project>(
+      let result = await apiFetch<Project>(
         `/api/projects/${editingProject.id}`,
         {
           method: "PATCH",
           body: JSON.stringify(payload),
         }
       );
+
+      // Handle completion warning: notify user, then retry with forceComplete
+      if (result.status === 422 && result.error?.includes("not marked as done")) {
+        toast("warning", result.error);
+        payload.forceComplete = true;
+        result = await apiFetch<Project>(
+          `/api/projects/${editingProject.id}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          }
+        );
+      }
 
       if (result.status === 409) {
         toast("warning", "This project was modified elsewhere. Refreshing...");
@@ -800,6 +821,33 @@ export default function ProjectsPage() {
                   disabled={saving}
                 />
               </div>
+
+              {/* Status (edit only) */}
+              {editingProject && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Status
+                  </label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) =>
+                      setFormData({ ...formData, status: e.target.value })
+                    }
+                    className="w-full h-10 px-3 border border-gray-300 rounded-md text-base focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                    disabled={saving || editingProject.status === "cancelled"}
+                  >
+                    <option value="active">Active</option>
+                    <option value="on_hold">On Hold</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                  {editingProject.status === "cancelled" && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Cancelled projects cannot be reopened.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Billing Type */}
               <div>

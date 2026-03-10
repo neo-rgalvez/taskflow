@@ -50,6 +50,9 @@ export async function GET(req: NextRequest) {
       where.projectId = params.projectId;
     }
 
+    // Exclude tasks from archived clients by default
+    where.project = { ...where.project, client: { isArchived: false } };
+
     if (params.priority) {
       where.priority = params.priority;
     }

@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
 
   const where = {
     userId: auth.userId,
+    client: { isArchived: false },
     ...(status && validStatuses.includes(status) ? { status } : {}),
     ...(clientId ? { clientId } : {}),
     ...(search
