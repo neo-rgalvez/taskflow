@@ -5,7 +5,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useTimer } from "@/components/ui/TimerContext";
 import { useToast } from "@/components/ui/Toast";
-import { Plus, Clock, Play, Square, AlertCircle, DollarSign, X } from "lucide-react";
+import { Plus, Clock, Play, Square, AlertCircle, DollarSign, X, Pencil, Trash2, MoreVertical } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { apiFetch } from "@/lib/api";
 import { usePageTitle } from "@/lib/usePageTitle";
 import { formatDate, formatDuration } from "@/lib/format";
@@ -95,6 +96,8 @@ export default function TimePage() {
   // Filter state
   const [projectFilter, setProjectFilter] = useState("all");
   const [billableFilter, setBillableFilter] = useState<"all" | "billable" | "non-billable">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   // Data state
   const [entries, setEntries] = useState<TimeEntry[]>([]);
@@ -121,6 +124,29 @@ export default function TimePage() {
   const [manualTasksLoading, setManualTasksLoading] = useState(false);
   const [manualSubmitting, setManualSubmitting] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
+
+  // Edit modal state
+  const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
+  const [editHours, setEditHours] = useState("");
+  const [editMinutes, setEditMinutes] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editBillable, setEditBillable] = useState(true);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Delete confirm state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant: "danger" | "warning";
+    onConfirm: () => void;
+  }>({ open: false, title: "", message: "", confirmLabel: "", variant: "danger", onConfirm: () => {} });
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  // Action menu
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
   // ---- Fetch projects (once on mount) ----
   useEffect(() => {
@@ -155,6 +181,12 @@ export default function TimePage() {
     } else if (billableFilter === "non-billable") {
       params.set("billable", "false");
     }
+    if (dateFrom) {
+      params.set("dateFrom", new Date(dateFrom + "T00:00:00").toISOString());
+    }
+    if (dateTo) {
+      params.set("dateTo", new Date(dateTo + "T23:59:59").toISOString());
+    }
     if (cursor) {
       params.set("cursor", cursor);
     }
@@ -183,7 +215,7 @@ export default function TimePage() {
 
     setLoading(false);
     setLoadingMore(false);
-  }, [projectFilter, billableFilter]);
+  }, [projectFilter, billableFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     fetchEntries();
@@ -285,6 +317,101 @@ export default function TimePage() {
     fetchEntries();
   }
 
+  // ---- Edit entry handlers ----
+
+  function openEditEntry(entry: TimeEntry) {
+    setEditingEntry(entry);
+    const h = Math.floor(entry.durationMinutes / 60);
+    const m = entry.durationMinutes % 60;
+    setEditHours(h > 0 ? String(h) : "");
+    setEditMinutes(m > 0 ? String(m) : "");
+    setEditDescription(entry.description || "");
+    setEditBillable(entry.isBillable);
+    setEditError(null);
+    setActiveMenu(null);
+  }
+
+  function closeEditEntry() {
+    setEditingEntry(null);
+  }
+
+  async function handleEditSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingEntry) return;
+    setEditError(null);
+
+    const h = parseInt(editHours || "0", 10);
+    const m = parseInt(editMinutes || "0", 10);
+    if (isNaN(h) || isNaN(m) || h < 0 || m < 0) {
+      setEditError("Please enter valid hours and minutes.");
+      return;
+    }
+    const durationMinutes = h * 60 + m;
+    if (durationMinutes < 1) {
+      setEditError("Duration must be at least 1 minute.");
+      return;
+    }
+    if (durationMinutes > 1440) {
+      setEditError("Duration must be 24 hours or less.");
+      return;
+    }
+
+    setEditSubmitting(true);
+    const res = await apiFetch(`/api/time-entries/${editingEntry.id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        durationMinutes,
+        description: editDescription.trim() || null,
+        isBillable: editBillable,
+      }),
+    });
+    setEditSubmitting(false);
+
+    if (res.error) {
+      setEditError(res.error);
+      return;
+    }
+
+    toast("success", "Time entry updated.");
+    closeEditEntry();
+    fetchEntries();
+  }
+
+  function handleDeleteEntry(entry: TimeEntry) {
+    setActiveMenu(null);
+    if (entry.isInvoiced) {
+      toast("error", "This time entry has been invoiced and cannot be deleted.");
+      return;
+    }
+    setConfirmDialog({
+      open: true,
+      title: "Delete Time Entry",
+      message: `Delete this ${formatDuration(entry.durationMinutes)} entry${entry.task?.title ? ` for "${entry.task.title}"` : ""}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger",
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        const res = await apiFetch(`/api/time-entries/${entry.id}`, { method: "DELETE" });
+        if (res.error) {
+          toast("error", res.error);
+        } else {
+          toast("success", "Time entry deleted.");
+          fetchEntries();
+        }
+        setConfirmLoading(false);
+        setConfirmDialog((prev) => ({ ...prev, open: false }));
+      },
+    });
+  }
+
+  // Close action menu on outside click
+  useEffect(() => {
+    if (!activeMenu) return;
+    const handler = () => setActiveMenu(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [activeMenu]);
+
   // ---- Derived data ----
   const grouped = groupByDate(entries);
   const totalHours = totalMinutes / 60;
@@ -355,6 +482,33 @@ export default function TimePage() {
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+            placeholder="From"
+          />
+          <span className="text-xs text-gray-400">to</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            min={dateFrom || undefined}
+            className="h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+            placeholder="To"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              onClick={() => { setDateFrom(""); setDateTo(""); }}
+              className="text-xs text-gray-500 hover:text-gray-700"
+              title="Clear date range"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-1">
           {(["all", "billable", "non-billable"] as const).map((filter) => (
             <button
@@ -464,11 +618,46 @@ export default function TimePage() {
                               <p className="text-xs text-gray-400 mt-1 line-clamp-1">{entry.description}</p>
                             )}
                           </div>
-                          <div className="text-right flex-shrink-0">
+                          <div className="text-right flex-shrink-0 flex items-center gap-2">
                             <p className="text-sm font-semibold font-mono text-gray-800 flex items-center gap-1">
                               <Clock size={13} className="text-gray-400" />
                               {formatDuration(entry.durationMinutes)}
                             </p>
+                            <div className="relative">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenu(activeMenu === entry.id ? null : entry.id);
+                                }}
+                                className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors"
+                              >
+                                <MoreVertical size={16} />
+                              </button>
+                              {activeMenu === entry.id && (
+                                <div className="absolute right-0 top-8 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-36">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openEditEntry(entry);
+                                    }}
+                                    disabled={entry.isInvoiced}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    <Pencil size={14} /> Edit
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteEntry(entry);
+                                    }}
+                                    disabled={entry.isInvoiced}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    <Trash2 size={14} /> Delete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -492,6 +681,128 @@ export default function TimePage() {
           )}
         </div>
       ) : null}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel={confirmDialog.confirmLabel}
+        variant={confirmDialog.variant}
+        loading={confirmLoading}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog((prev) => ({ ...prev, open: false }))}
+      />
+
+      {/* Edit Entry Modal */}
+      {editingEntry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/50" onClick={closeEditEntry} />
+          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6 animate-fade-in">
+            <button
+              onClick={closeEditEntry}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            >
+              <X size={20} />
+            </button>
+
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Edit Time Entry</h2>
+
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              {/* Duration */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Duration <span className="text-red-500">*</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="24"
+                      value={editHours}
+                      onChange={(e) => setEditHours(e.target.value)}
+                      placeholder="0"
+                      className="w-20 h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                    />
+                    <span className="text-sm text-gray-500">h</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={editMinutes}
+                      onChange={(e) => setEditMinutes(e.target.value)}
+                      placeholder="0"
+                      className="w-20 h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+                    />
+                    <span className="text-sm text-gray-500">m</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={2}
+                  maxLength={2000}
+                  placeholder="What did you work on?"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200 resize-none"
+                />
+              </div>
+
+              {/* Billable toggle */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditBillable(!editBillable)}
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                    editBillable ? "bg-primary-500" : "bg-gray-200"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      editBillable ? "translate-x-4" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+                <span className="text-sm text-gray-700">Billable</span>
+              </div>
+
+              {/* Error */}
+              {editError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+                  <AlertCircle size={16} className="flex-shrink-0" />
+                  {editError}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeEditEntry}
+                  disabled={editSubmitting}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-md hover:bg-primary-600 disabled:opacity-50 transition-colors"
+                >
+                  {editSubmitting ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Manual Entry Modal */}
       {showManualEntry && (

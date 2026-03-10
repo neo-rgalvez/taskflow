@@ -106,6 +106,7 @@ export default function TasksPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
   const [sortBy, setSortBy] = useState("dueDate");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
@@ -151,13 +152,14 @@ export default function TasksPage() {
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (projectFilter !== "all") params.set("projectId", projectFilter);
+      if (priorityFilter !== "all") params.set("priority", priorityFilter);
       params.set("sort", sortBy);
       params.set("order", sortOrder);
       params.set("limit", String(PAGE_SIZE));
       if (cursor) params.set("cursor", cursor);
       return params.toString();
     },
-    [debouncedSearch, statusFilter, projectFilter, sortBy, sortOrder],
+    [debouncedSearch, statusFilter, projectFilter, priorityFilter, sortBy, sortOrder],
   );
 
   // -------------------------------------------
@@ -220,6 +222,7 @@ export default function TasksPage() {
     setSearch("");
     setStatusFilter("all");
     setProjectFilter("all");
+    setPriorityFilter("all");
   };
 
   // -------------------------------------------
@@ -277,6 +280,17 @@ export default function TasksPage() {
               {p.name}
             </option>
           ))}
+        </select>
+        <select
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value)}
+          className="h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+        >
+          <option value="all">All Priorities</option>
+          <option value="urgent">Urgent</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
         </select>
         <div className="flex items-center gap-1">
           <SlidersHorizontal size={14} className="text-gray-400" />
