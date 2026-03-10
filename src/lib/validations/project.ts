@@ -59,6 +59,18 @@ export const createProjectSchema = z
         path: ["fixedPrice"],
       });
     }
+    if (data.deadline && data.deadline !== "") {
+      const deadlineDate = new Date(data.deadline);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (deadlineDate < today) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Deadline must be a future date.",
+          path: ["deadline"],
+        });
+      }
+    }
   });
 
 export const updateProjectSchema = z
