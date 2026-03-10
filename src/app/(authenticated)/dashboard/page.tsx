@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { StatCardSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { apiFetch } from "@/lib/api";
+import { usePageTitle } from "@/lib/usePageTitle";
 import {
   Users,
   FolderKanban,
@@ -50,6 +51,7 @@ interface RecentTaskActivity {
 }
 
 export default function DashboardPage() {
+  usePageTitle("Dashboard");
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [activeProjectsList, setActiveProjectsList] = useState<DashboardProject[]>([]);

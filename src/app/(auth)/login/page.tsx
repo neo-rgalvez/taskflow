@@ -4,8 +4,10 @@ import { Suspense, useState, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { usePageTitle } from "@/lib/usePageTitle";
 
 function LoginForm() {
+  usePageTitle("Log In");
   const searchParams = useSearchParams();
   const returnUrl = searchParams.get("returnUrl") || "/dashboard";
   const [email, setEmail] = useState("");

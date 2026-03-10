@@ -7,6 +7,7 @@ import { useTimer } from "@/components/ui/TimerContext";
 import { useToast } from "@/components/ui/Toast";
 import { Plus, Clock, Play, Square, AlertCircle, DollarSign, X } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { usePageTitle } from "@/lib/usePageTitle";
 import { formatDate, formatDuration } from "@/lib/format";
 
 // ---- Types matching the API response ----
@@ -87,6 +88,7 @@ function groupByDate(entries: TimeEntry[]): Record<string, TimeEntry[]> {
 // ---- Component ----
 
 export default function TimePage() {
+  usePageTitle("Time Tracking");
   const timer = useTimer();
   const { toast } = useToast();
 

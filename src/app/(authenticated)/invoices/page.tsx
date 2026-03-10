@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api";
+import { usePageTitle } from "@/lib/usePageTitle";
 import { statusLabels } from "@/lib/status";
 import {
   Search,
@@ -94,6 +95,7 @@ function formatDate(dateStr: string | null): string {
 }
 
 export default function InvoicesPage() {
+  usePageTitle("Invoices");
   const { toast } = useToast();
 
   // Data state
