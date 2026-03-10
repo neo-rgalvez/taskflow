@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useCallback } from "react";
 import { AlertTriangle, X } from "lucide-react";
 
 interface ConfirmDialogProps {
@@ -25,14 +26,72 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // Focus trap and restore focus on close
+  useEffect(() => {
+    if (open) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
+      // Focus the dialog after render
+      requestAnimationFrame(() => {
+        dialogRef.current?.focus();
+      });
+    } else if (previousFocusRef.current) {
+      previousFocusRef.current.focus();
+      previousFocusRef.current = null;
+    }
+  }, [open]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onCancel();
+        return;
+      }
+
+      // Focus trap: cycle through focusable elements
+      if (e.key === "Tab" && dialogRef.current) {
+        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last?.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first?.focus();
+          }
+        }
+      }
+    },
+    [onCancel]
+  );
+
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/50" onClick={onCancel} />
-      <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6 animate-fade-in">
+      <div className="fixed inset-0 bg-black/50" onClick={onCancel} aria-hidden="true" />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        aria-describedby="confirm-dialog-message"
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className="relative bg-white rounded-lg shadow-xl w-full max-w-md p-6 animate-fade-in outline-none"
+      >
         <button
           onClick={onCancel}
+          aria-label="Close dialog"
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
         >
           <X size={20} />
@@ -49,8 +108,8 @@ export function ConfirmDialog({
             <AlertTriangle size={20} />
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-            <p className="mt-2 text-sm text-gray-600">{message}</p>
+            <h3 id="confirm-dialog-title" className="text-lg font-semibold text-gray-900">{title}</h3>
+            <p id="confirm-dialog-message" className="mt-2 text-sm text-gray-600">{message}</p>
           </div>
         </div>
 

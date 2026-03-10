@@ -451,14 +451,37 @@ export default function ProjectDetailContent({ id }: { id: string }) {
             </span>
           </div>
         )}
-        {project.budgetHours && (
-          <div>
-            <span className="text-gray-500">Budget:</span>
-            <span className="ml-2 font-medium text-gray-700 font-mono">
-              {formatDuration(totalTrackedMinutes)}/{project.budgetHours}h
-            </span>
-          </div>
-        )}
+        {project.budgetHours && (() => {
+          const budgetMinutes = project.budgetHours * 60;
+          const pct = Math.min(Math.round((totalTrackedMinutes / budgetMinutes) * 100), 100);
+          const overBudget = totalTrackedMinutes > budgetMinutes;
+          return (
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500">Budget:</span>
+              <span className={`font-medium font-mono ${overBudget ? "text-red-600" : "text-gray-700"}`}>
+                {formatDuration(totalTrackedMinutes)}/{project.budgetHours}h
+              </span>
+              <div
+                className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden"
+                role="progressbar"
+                aria-valuenow={pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Budget usage: ${pct}%`}
+              >
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    overBudget ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-primary-500"
+                  }`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              {overBudget && (
+                <span className="text-xs text-red-600 font-medium">Over budget</span>
+              )}
+            </div>
+          );
+        })()}
         {project.deadline && (
           <div>
             <span className="text-gray-500">Deadline:</span>
