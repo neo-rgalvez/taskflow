@@ -133,6 +133,7 @@ export async function GET(req: NextRequest) {
           budgetHours: true,
           hourlyRate: true,
           timeEntries: {
+            where: { userId: auth.userId },
             select: { durationMinutes: true },
           },
         },
@@ -174,7 +175,7 @@ export async function GET(req: NextRequest) {
             select: { id: true },
           },
           timeEntries: {
-            where: { startTime: { gte: rangeStart } },
+            where: { userId: auth.userId, startTime: { gte: rangeStart } },
             select: { durationMinutes: true, isBillable: true },
           },
         },
