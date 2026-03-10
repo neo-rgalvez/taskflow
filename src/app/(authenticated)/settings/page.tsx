@@ -222,6 +222,7 @@ function ProfileTab({
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false);
 
   async function handleAvatarChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -261,7 +262,8 @@ function ProfileTab({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (saving) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setFieldErrors({});
     setSaving(true);
 
@@ -272,6 +274,7 @@ function ProfileTab({
 
     if (Object.keys(body).length === 0) {
       setSaving(false);
+      submittingRef.current = false;
       return;
     }
 
@@ -287,6 +290,7 @@ function ProfileTab({
       toast("error", error || "Failed to save changes.");
     }
     setSaving(false);
+    submittingRef.current = false;
   }
 
   const initials = name
@@ -423,6 +427,7 @@ function PasswordTab() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const submittingRef = useRef(false);
 
   const strengthScore = getStrengthScore(newPassword);
   const strength = getStrengthLabel(strengthScore);
@@ -435,7 +440,8 @@ function PasswordTab() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (saving) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setFieldErrors({});
     setSaving(true);
 
@@ -457,6 +463,7 @@ function PasswordTab() {
       toast("error", error || "Failed to change password.");
     }
     setSaving(false);
+    submittingRef.current = false;
   }
 
   return (
@@ -641,23 +648,26 @@ function DangerZoneTab({ onDeleted }: { onDeleted: () => void }) {
     projects: number;
     tasks: number;
     timeEntries: number;
+    invoices: number;
   } | null>(null);
   const [loadingCounts, setLoadingCounts] = useState(false);
 
   async function loadCascadeCounts() {
     setLoadingCounts(true);
     // Gather counts client-side from existing endpoints
-    const [clients, projects, tasks, timeEntries] = await Promise.all([
+    const [clients, projects, tasks, timeEntries, invoices] = await Promise.all([
       apiFetch<{ totalCount: number }>("/api/clients?limit=1"),
       apiFetch<{ totalCount: number }>("/api/projects?limit=1"),
       apiFetch<{ totalCount: number }>("/api/tasks?limit=1"),
       apiFetch<{ totalCount: number }>("/api/time-entries?limit=1"),
+      apiFetch<{ totalCount: number }>("/api/invoices?limit=1"),
     ]);
     setCascadeCounts({
       clients: clients.data?.totalCount ?? 0,
       projects: projects.data?.totalCount ?? 0,
       tasks: tasks.data?.totalCount ?? 0,
       timeEntries: timeEntries.data?.totalCount ?? 0,
+      invoices: invoices.data?.totalCount ?? 0,
     });
     setLoadingCounts(false);
   }
@@ -829,6 +839,10 @@ function DangerZoneTab({ onDeleted }: { onDeleted: () => void }) {
                         <li>
                           {cascadeCounts.timeEntries} time entr
                           {cascadeCounts.timeEntries !== 1 ? "ies" : "y"}
+                        </li>
+                        <li>
+                          {cascadeCounts.invoices} invoice
+                          {cascadeCounts.invoices !== 1 ? "s" : ""}
                         </li>
                       </ul>
                     </div>

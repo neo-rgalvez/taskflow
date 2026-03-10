@@ -52,12 +52,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Gather cascade counts for the confirmation response
-    const [clientCount, projectCount, taskCount, timeEntryCount] =
+    const [clientCount, projectCount, taskCount, timeEntryCount, invoiceCount] =
       await Promise.all([
         db.client.count({ where: { userId: auth.userId } }),
         db.project.count({ where: { userId: auth.userId } }),
         db.task.count({ where: { userId: auth.userId } }),
         db.timeEntry.count({ where: { userId: auth.userId } }),
+        db.invoice.count({ where: { userId: auth.userId } }),
       ]);
 
     // Set scheduled deletion date (fix #9)
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest) {
         projects: projectCount,
         tasks: taskCount,
         timeEntries: timeEntryCount,
+        invoices: invoiceCount,
       },
     });
 
