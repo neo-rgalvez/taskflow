@@ -7,6 +7,7 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useMemo,
   type ReactNode,
 } from "react";
 
@@ -74,6 +75,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const [project, setProject] = useState<TimerProject | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedRef = useRef(0);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    elapsedRef.current = elapsedSeconds;
+  }, [elapsedSeconds]);
 
   // Tick every second when running
   useEffect(() => {
@@ -115,12 +122,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const stop = useCallback(() => {
     setIsRunning(false);
     setIsActive(false);
-    const seconds = elapsedSeconds;
+    const seconds = elapsedRef.current;
     setElapsedSeconds(0);
     setTask(null);
     setProject(null);
     return seconds;
-  }, [elapsedSeconds]);
+  }, []);
 
   const discard = useCallback(() => {
     setIsRunning(false);
@@ -130,21 +137,24 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     setProject(null);
   }, []);
 
+  const value = useMemo<TimerContextValue>(
+    () => ({
+      isActive,
+      isRunning,
+      elapsedSeconds,
+      task,
+      project,
+      start,
+      pause,
+      resume,
+      stop,
+      discard,
+    }),
+    [isActive, isRunning, elapsedSeconds, task, project, start, pause, resume, stop, discard],
+  );
+
   return (
-    <TimerContext.Provider
-      value={{
-        isActive,
-        isRunning,
-        elapsedSeconds,
-        task,
-        project,
-        start,
-        pause,
-        resume,
-        stop,
-        discard,
-      }}
-    >
+    <TimerContext.Provider value={value}>
       {children}
     </TimerContext.Provider>
   );
