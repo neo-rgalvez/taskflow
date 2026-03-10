@@ -67,13 +67,31 @@ export async function getSession(
 
 /**
  * Require authentication. Returns session or responds with 401.
+ * Clears the session cookie on 401 so middleware won't create a redirect loop
+ * (middleware checks cookie existence, not DB validity).
  */
 export async function requireAuth(
   req: NextRequest
 ): Promise<AuthSession | NextResponse> {
   const session = await getSession(req);
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const response = NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+    // Clear the stale cookie — without this, middleware sees the cookie,
+    // lets the user through to protected pages, API returns 401, apiFetch
+    // redirects to /login, middleware sees cookie again → infinite loop.
+    if (req.cookies.get("session_token")?.value) {
+      response.cookies.set("session_token", "", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/",
+        maxAge: 0,
+      });
+    }
+    return response;
   }
   return session;
 }
