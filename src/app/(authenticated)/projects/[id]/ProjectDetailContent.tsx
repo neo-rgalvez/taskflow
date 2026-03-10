@@ -461,6 +461,14 @@ export default function ProjectDetailContent({ id }: { id: string }) {
         </div>
       </div>
 
+      {/* Large board warning (C.4: cap at 500, warn if exceeded) */}
+      {tasks.length > 500 && (
+        <div className="bg-warning-light border border-warning rounded-lg p-3 mb-4 text-sm text-warning-dark flex items-center gap-2">
+          <span className="font-medium">This project has {tasks.length} tasks.</span>
+          Performance may be affected. Consider archiving completed tasks or splitting into smaller projects.
+        </div>
+      )}
+
       {tasks.length === 0 && !inlineCreating ? (
         <EmptyState
           icon="tasks"
@@ -882,6 +890,7 @@ function TaskDetailSlideOver({
   const [task, setTask] = useState<TaskData | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   // Auto-save debounce refs
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -909,6 +918,54 @@ function TaskDetailSlideOver({
     };
   }, [fetchTaskDetail]);
 
+  // ─── Escape key to close ──────────────────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  // ─── Body scroll lock ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = original; };
+  }, []);
+
+  // ─── Focus trap ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const focusable = panel.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length > 0) focusable[0].focus();
+
+    const trapFocus = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !panel) return;
+      const all = panel.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (all.length === 0) return;
+      const first = all[0];
+      const last = all[all.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", trapFocus);
+    return () => document.removeEventListener("keydown", trapFocus);
+  }, [loading]);
+
   // ─── Flush pending auto-save immediately (called on close) ─────────────────
 
   const flushPendingSave = useCallback(async () => {
@@ -929,46 +986,66 @@ function TaskDetailSlideOver({
     });
   }, []);
 
-  // ─── Auto-save helper ──────────────────────────────────────────────────────
+  // ─── Discrete fields that should save immediately (no debounce) ──────────
+  const discreteFields = new Set(["status", "priority"]);
+
+  // ─── Persist a single field update to the server ──────────────────────────
+  const persistField = useCallback(
+    async (field: string, value: unknown) => {
+      if (!task) return;
+      pendingSaveRef.current = null;
+
+      const body: Record<string, unknown> = {
+        [field]: value,
+        updatedAt: latestTaskRef.current?.updatedAt || task.updatedAt,
+      };
+
+      const res = await apiFetch<TaskData>(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+
+      if (res.data) {
+        latestTaskRef.current = { ...latestTaskRef.current!, ...res.data };
+        setTask((prev) => prev ? { ...prev, ...res.data, comments: prev.comments, timeEntries: prev.timeEntries } : prev);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { id: _taskId, ...rest } = res.data;
+        onTaskUpdated({ id: task.id, ...rest });
+      } else if (res.status === 409) {
+        toast("warning", "Task was modified. Refreshing...");
+        fetchTaskDetail();
+      } else {
+        toast("error", res.error || "Failed to save");
+      }
+    },
+    [task, onTaskUpdated, fetchTaskDetail, toast]
+  );
+
+  // ─── Auto-save helper (debounced for text, immediate for dropdowns) ───────
 
   const autoSave = useCallback(
     (field: string, value: unknown) => {
       if (!task) return;
 
-      // Track pending save for flush-on-close
-      pendingSaveRef.current = { field, value };
+      // Discrete fields (dropdowns) save immediately — no debounce
+      if (discreteFields.has(field)) {
+        // Clear any pending debounced save for other fields first
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        pendingSaveRef.current = null;
+        persistField(field, value);
+        return;
+      }
 
-      // Clear pending save timer
+      // Text fields: 600ms debounce
+      pendingSaveRef.current = { field, value };
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
-      saveTimeoutRef.current = setTimeout(async () => {
-        pendingSaveRef.current = null;
-
-        const body: Record<string, unknown> = {
-          [field]: value,
-          updatedAt: latestTaskRef.current?.updatedAt || task.updatedAt,
-        };
-
-        const res = await apiFetch<TaskData>(`/api/tasks/${task.id}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
-        });
-
-        if (res.data) {
-          latestTaskRef.current = { ...latestTaskRef.current!, ...res.data };
-          setTask((prev) => prev ? { ...prev, ...res.data, comments: prev.comments, timeEntries: prev.timeEntries } : prev);
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { id: _taskId, ...rest } = res.data;
-          onTaskUpdated({ id: task.id, ...rest });
-        } else if (res.status === 409) {
-          toast("warning", "Task was modified. Refreshing...");
-          fetchTaskDetail();
-        } else {
-          toast("error", res.error || "Failed to save");
-        }
+      saveTimeoutRef.current = setTimeout(() => {
+        persistField(field, value);
       }, 600);
     },
-    [task, onTaskUpdated, fetchTaskDetail, toast]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [task, persistField]
   );
 
   // ─── Field Handlers ────────────────────────────────────────────────────────
@@ -977,6 +1054,11 @@ function TaskDetailSlideOver({
     if (!task) return;
     // Always update local state for responsive UI
     setTask((prev) => prev ? { ...prev, [field]: value } : prev);
+
+    // For discrete fields, also push an optimistic board update immediately
+    if (discreteFields.has(field)) {
+      onTaskUpdated({ id: task.id, [field]: value });
+    }
 
     // Validate title is not empty before saving
     if (field === "title" && !(value as string).trim()) {
@@ -1030,16 +1112,13 @@ function TaskDetailSlideOver({
 
   const toggleSubtask = async (subtaskId: string, isCompleted: boolean) => {
     if (!task) return;
-    // Optimistic
-    setTask((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        subtasks: prev.subtasks.map((s) =>
-          s.id === subtaskId ? { ...s, isCompleted } : s
-        ),
-      };
-    });
+    // Optimistic local update
+    const updatedSubtasks = task.subtasks.map((s) =>
+      s.id === subtaskId ? { ...s, isCompleted } : s
+    );
+    setTask((prev) => prev ? { ...prev, subtasks: updatedSubtasks } : prev);
+    // Also update the board card's subtask data
+    onTaskUpdated({ id: task.id, subtasks: updatedSubtasks });
 
     const res = await apiFetch(`/api/subtasks/${subtaskId}`, {
       method: "PATCH",
@@ -1047,28 +1126,27 @@ function TaskDetailSlideOver({
     });
 
     if (res.error) {
-      // Revert
-      setTask((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          subtasks: prev.subtasks.map((s) =>
-            s.id === subtaskId ? { ...s, isCompleted: !isCompleted } : s
-          ),
-        };
-      });
+      // Revert both local and board
+      const revertedSubtasks = task.subtasks.map((s) =>
+        s.id === subtaskId ? { ...s, isCompleted: !isCompleted } : s
+      );
+      setTask((prev) => prev ? { ...prev, subtasks: revertedSubtasks } : prev);
+      onTaskUpdated({ id: task.id, subtasks: revertedSubtasks });
       toast("error", "Failed to update subtask");
     }
   };
 
   const deleteSubtask = async (subtaskId: string) => {
     if (!task) return;
-    const prev = task.subtasks;
-    setTask((t) => t ? { ...t, subtasks: t.subtasks.filter((s) => s.id !== subtaskId) } : t);
+    const prevSubtasks = task.subtasks;
+    const filtered = task.subtasks.filter((s) => s.id !== subtaskId);
+    setTask((t) => t ? { ...t, subtasks: filtered } : t);
+    onTaskUpdated({ id: task.id, subtasks: filtered });
 
     const res = await apiFetch(`/api/subtasks/${subtaskId}`, { method: "DELETE" });
     if (res.error) {
-      setTask((t) => t ? { ...t, subtasks: prev } : t);
+      setTask((t) => t ? { ...t, subtasks: prevSubtasks } : t);
+      onTaskUpdated({ id: task.id, subtasks: prevSubtasks });
       toast("error", "Failed to delete subtask");
     }
   };
@@ -1076,9 +1154,9 @@ function TaskDetailSlideOver({
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="fixed inset-0 bg-black/50" onClick={handleClose} />
-      <div className="relative bg-white w-full max-w-md sm:max-w-lg shadow-xl animate-slide-in-right flex flex-col h-full">
+    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Task detail">
+      <div className="fixed inset-0 bg-black/50 animate-fade-in" onClick={handleClose} />
+      <div ref={panelRef} className="relative bg-white w-full max-w-md sm:max-w-lg shadow-xl animate-slide-in-right flex flex-col h-full">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
           <h2 className="text-lg font-semibold text-gray-900 truncate pr-4">Task Detail</h2>
@@ -1183,9 +1261,11 @@ function TaskDetailSlideOver({
                 onToggle={toggleSubtask}
                 onDelete={deleteSubtask}
                 onSubtaskAdded={(subtask) => {
+                  const newSubtasks = [...task.subtasks, subtask];
                   setTask((prev) =>
-                    prev ? { ...prev, subtasks: [...prev.subtasks, subtask] } : prev
+                    prev ? { ...prev, subtasks: newSubtasks } : prev
                   );
+                  onTaskUpdated({ id: task.id, subtasks: newSubtasks });
                 }}
               />
 
