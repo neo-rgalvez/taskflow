@@ -203,12 +203,16 @@ export default function ProjectDetailContent({ id }: { id: string }) {
       });
 
       if (res.error) {
-        // Revert
-        updateTaskInList(taskId, { status: oldStatus, position: oldPosition });
-        if (res.status === 409) {
+        if (res.status === 404) {
+          // Task was deleted in another tab — remove stale card (§D.11)
+          setTasks((prev) => prev.filter((t) => t.id !== taskId));
+          toast("error", "This task no longer exists.");
+        } else if (res.status === 409) {
+          updateTaskInList(taskId, { status: oldStatus, position: oldPosition });
           toast("warning", "Task was modified. Refreshing...");
           fetchTasks();
         } else {
+          updateTaskInList(taskId, { status: oldStatus, position: oldPosition });
           toast("error", res.error);
         }
       } else {
@@ -331,12 +335,16 @@ export default function ProjectDetailContent({ id }: { id: string }) {
         });
 
         if (res.error) {
-          if (res.status === 409) {
+          if (res.status === 404) {
+            setTasks((prev) => prev.filter((t) => t.id !== activeId));
+            toast("error", "This task no longer exists.");
+          } else if (res.status === 409) {
             toast("warning", "Task was modified. Refreshing...");
+            fetchTasks();
           } else {
             toast("error", res.error);
+            fetchTasks();
           }
-          fetchTasks();
         } else {
           fetchTasks();
         }
@@ -1011,6 +1019,10 @@ function TaskDetailSlideOver({
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { id: _taskId, ...rest } = res.data;
         onTaskUpdated({ id: task.id, ...rest });
+      } else if (res.status === 404) {
+        // Task was deleted in another tab/session (§D.11)
+        toast("error", "This task no longer exists.");
+        onTaskDeleted(task.id);
       } else if (res.status === 409) {
         toast("warning", "Task was modified. Refreshing...");
         fetchTaskDetail();
@@ -1018,7 +1030,7 @@ function TaskDetailSlideOver({
         toast("error", res.error || "Failed to save");
       }
     },
-    [task, onTaskUpdated, fetchTaskDetail, toast]
+    [task, onTaskUpdated, onTaskDeleted, fetchTaskDetail, toast]
   );
 
   // ─── Auto-save helper (debounced for text, immediate for dropdowns) ───────
@@ -1126,6 +1138,11 @@ function TaskDetailSlideOver({
     });
 
     if (res.error) {
+      if (res.status === 404) {
+        toast("error", "This task no longer exists.");
+        onTaskDeleted(task.id);
+        return;
+      }
       // Revert both local and board
       const revertedSubtasks = task.subtasks.map((s) =>
         s.id === subtaskId ? { ...s, isCompleted: !isCompleted } : s
@@ -1145,6 +1162,11 @@ function TaskDetailSlideOver({
 
     const res = await apiFetch(`/api/subtasks/${subtaskId}`, { method: "DELETE" });
     if (res.error) {
+      if (res.status === 404) {
+        toast("error", "This task no longer exists.");
+        onTaskDeleted(task.id);
+        return;
+      }
       setTask((t) => t ? { ...t, subtasks: prevSubtasks } : t);
       onTaskUpdated({ id: task.id, subtasks: prevSubtasks });
       toast("error", "Failed to delete subtask");

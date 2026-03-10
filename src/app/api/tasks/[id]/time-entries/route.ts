@@ -42,14 +42,23 @@ export async function POST(
   const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
-  // Verify task ownership
+  // Verify task ownership and project status
   const task = await db.task.findFirst({
     where: { id: params.id, userId: auth.userId },
-    select: { id: true, projectId: true },
+    select: { id: true, projectId: true, project: { select: { status: true } } },
   });
 
   if (!task) {
     return NextResponse.json({ error: "Task not found" }, { status: 404 });
+  }
+
+  // Block time logging on non-active projects (§6.4)
+  if (task.project.status !== "active") {
+    const label = task.project.status.replace("_", " ");
+    return NextResponse.json(
+      { error: `Cannot log time on a ${label} project. Reopen it first.` },
+      { status: 422 }
+    );
   }
 
   let body: unknown;
