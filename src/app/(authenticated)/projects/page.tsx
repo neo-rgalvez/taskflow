@@ -113,6 +113,7 @@ export default function ProjectsPage() {
   // Search and filter
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [clientFilter, setClientFilter] = useState("all");
   const [searchDebounce, setSearchDebounce] = useState("");
 
   // Modal state
@@ -132,9 +133,10 @@ export default function ProjectsPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
-  // Client options for dropdown
+  // Client options for dropdown (also used for filter)
   const [clientOptions, setClientOptions] = useState<ClientOption[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
+  const [filterClients, setFilterClients] = useState<ClientOption[]>([]);
 
   // Action menu
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -163,6 +165,16 @@ export default function ProjectsPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  // Fetch client list for filter dropdown (once on mount)
+  useEffect(() => {
+    (async () => {
+      const res = await apiFetch<ClientListResponse>("/api/clients?limit=100");
+      if (res.data) {
+        setFilterClients(res.data.data);
+      }
+    })();
+  }, []);
+
   // Fetch projects
   const fetchProjects = useCallback(
     async (cursor?: string) => {
@@ -176,6 +188,7 @@ export default function ProjectsPage() {
       const params = new URLSearchParams();
       if (searchDebounce) params.set("search", searchDebounce);
       if (statusFilter !== "all") params.set("status", statusFilter);
+      if (clientFilter !== "all") params.set("clientId", clientFilter);
       if (cursor) params.set("cursor", cursor);
 
       const result = await apiFetch<ProjectListResponse>(
@@ -199,7 +212,7 @@ export default function ProjectsPage() {
       setLoading(false);
       setLoadingMore(false);
     },
-    [searchDebounce, statusFilter, toast]
+    [searchDebounce, statusFilter, clientFilter, toast]
   );
 
   useEffect(() => {
@@ -512,6 +525,16 @@ export default function ProjectsPage() {
                 className="w-full h-9 pl-9 pr-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
               />
             </div>
+            <select
+              value={clientFilter}
+              onChange={(e) => setClientFilter(e.target.value)}
+              className="h-9 px-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:border-primary-500 focus:ring-primary-200"
+            >
+              <option value="all">All Clients</option>
+              {filterClients.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
             <div className="flex items-center gap-1 flex-wrap">
               {filterOptions.map((status) => (
                 <button
@@ -549,6 +572,7 @@ export default function ProjectsPage() {
                   onClick={() => {
                     setSearch("");
                     setStatusFilter("all");
+                    setClientFilter("all");
                   }}
                   className="mt-2 text-sm text-primary-500 hover:text-primary-700"
                 >
