@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { checkRateLimit } from "@/lib/rate-limit";
 import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import { createHash } from "crypto";
@@ -10,8 +11,25 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required."),
 });
 
+// 5 attempts per IP per 15-minute window
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
 export async function POST(req: NextRequest) {
   try {
+    // Rate limit by IP
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const rateCheck = checkRateLimit(`login:${ip}`, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_MS);
+    if (rateCheck.limited) {
+      return NextResponse.json(
+        { error: "Too many login attempts. Please try again later." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rateCheck.retryAfterSeconds) },
+        }
+      );
+    }
+
     const body = await req.json();
     const parsed = loginSchema.safeParse(body);
 

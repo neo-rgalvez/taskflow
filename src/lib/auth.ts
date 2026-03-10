@@ -54,14 +54,6 @@ export async function getSession(
     }
   }
 
-  // No valid session found — development fallback
-  if (process.env.NODE_ENV === "development") {
-    const devUser = await db.user.findFirst();
-    if (devUser) {
-      return { userId: devUser.id, sessionId: "dev-session" };
-    }
-  }
-
   return null;
 }
 
