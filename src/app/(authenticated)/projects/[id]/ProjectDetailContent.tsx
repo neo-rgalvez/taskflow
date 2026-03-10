@@ -129,6 +129,7 @@ export default function ProjectDetailContent({ id }: { id: string }) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [inlineCreating, setInlineCreating] = useState<string | null>(null); // column key
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const preDragTaskRef = useRef<TaskData | null>(null);
 
   // ─── Data Fetching ──────────────────────────────────────────────────────────
 
@@ -240,8 +241,10 @@ export default function ProjectDetailContent({ id }: { id: string }) {
   );
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveTaskId(event.active.id as string);
-  }, []);
+    const taskId = event.active.id as string;
+    preDragTaskRef.current = tasks.find((t) => t.id === taskId) ?? null;
+    setActiveTaskId(taskId);
+  }, [tasks]);
 
   const handleDragOver = useCallback(
     (event: DragOverEvent) => {
@@ -279,13 +282,17 @@ export default function ProjectDetailContent({ id }: { id: string }) {
       const { active, over } = event;
       setActiveTaskId(null);
 
-      if (!over) return;
+      // Use the pre-drag snapshot captured in handleDragStart.
+      // handleDragOver already mutated `tasks` state (status change), so
+      // reading from `tasks` here would see the already-updated status,
+      // making it impossible to detect cross-column moves.
+      const originalTask = preDragTaskRef.current;
+      preDragTaskRef.current = null;
+
+      if (!over || !originalTask) return;
 
       const activeId = active.id as string;
       const overId = over.id as string;
-
-      const task = tasks.find((t) => t.id === activeId);
-      if (!task) return;
 
       // Determine the drop target column
       const overTask = tasks.find((t) => t.id === overId);
@@ -312,13 +319,9 @@ export default function ProjectDetailContent({ id }: { id: string }) {
         newPosition = columnTasks.length;
       }
 
-      // If status didn't change and position didn't change, no-op
-      if (task.status === targetColumn && task.position === newPosition) return;
-
-      // Find the original task data (before drag modifications)
-      // We need the original status for the API call comparison
-      const originalTask = tasks.find((t) => t.id === activeId);
-      if (!originalTask) return;
+      // Compare against ORIGINAL (pre-drag) status and position — not the
+      // already-mutated state that handleDragOver wrote to.
+      if (originalTask.status === targetColumn && originalTask.position === newPosition) return;
 
       // Fire the status change with position
       const doUpdate = async () => {
@@ -357,6 +360,7 @@ export default function ProjectDetailContent({ id }: { id: string }) {
 
   const handleDragCancel = useCallback(() => {
     setActiveTaskId(null);
+    preDragTaskRef.current = null;
     fetchTasks(); // Reset to server state
   }, [fetchTasks]);
 
