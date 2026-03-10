@@ -7,6 +7,7 @@ import { TaskCardSkeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Search, SlidersHorizontal, Calendar, Clock, MessageSquare, ChevronDown, AlertCircle } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { usePageTitle } from "@/lib/usePageTitle";
 import { formatDate, formatDuration } from "@/lib/format";
 import Link from "next/link";
 
@@ -100,6 +101,7 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 // ---------------------------------------------------------------------------
 
 export default function TasksPage() {
+  usePageTitle("Tasks");
   // Filter / sort state
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");

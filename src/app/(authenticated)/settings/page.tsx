@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
+import { usePageTitle } from "@/lib/usePageTitle";
 import {
   AlertTriangle,
   User,
@@ -80,6 +81,7 @@ const TIMEZONES = [
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  usePageTitle("Settings");
   const router = useRouter();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<Tab>("profile");
@@ -1126,7 +1128,7 @@ function BusinessTab() {
       <p className="text-sm text-gray-500 mb-6">
         This information appears on your invoices.
       </p>
-      <form className="space-y-5">
+      <form onSubmit={(e) => e.preventDefault()} className="space-y-5">
         {/* Logo Upload */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">

@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { apiFetch } from "@/lib/api";
+import { usePageTitle } from "@/lib/usePageTitle";
 import { formatDate, formatCurrency } from "@/lib/format";
 import { statusLabels } from "@/lib/status";
 
@@ -97,6 +98,7 @@ function getInitials(name: string): string {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function ProjectsPage() {
+  usePageTitle("Projects");
   const { toast } = useToast();
 
   // Data state

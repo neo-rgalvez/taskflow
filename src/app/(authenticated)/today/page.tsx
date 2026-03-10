@@ -9,6 +9,7 @@ import { useTimer } from "@/components/ui/TimerContext";
 import { Play, Square, CheckCircle2, Calendar, Clock, Sun } from "lucide-react";
 import { formatDate, formatDuration } from "@/lib/format";
 import { apiFetch } from "@/lib/api";
+import { usePageTitle } from "@/lib/usePageTitle";
 import Link from "next/link";
 
 interface TaskItem {
@@ -24,6 +25,7 @@ interface TaskItem {
 }
 
 export default function TodayPage() {
+  usePageTitle("Today");
   const timer = useTimer();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);

@@ -3,8 +3,10 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import { Eye, EyeOff, Check, X } from "lucide-react";
+import { usePageTitle } from "@/lib/usePageTitle";
 
 export default function SignupPage() {
+  usePageTitle("Sign Up");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

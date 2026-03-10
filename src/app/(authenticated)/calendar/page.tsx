@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { usePageTitle } from "@/lib/usePageTitle";
 import { useRouter } from "next/navigation";
 
 const MONTHS = [
@@ -47,6 +48,7 @@ interface ProjectItem {
 }
 
 export default function CalendarPage() {
+  usePageTitle("Calendar");
   const router = useRouter();
   const now = new Date();
   const [currentYear, setCurrentYear] = useState(now.getFullYear());

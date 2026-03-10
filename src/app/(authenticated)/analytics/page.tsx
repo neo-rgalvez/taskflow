@@ -12,6 +12,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { usePageTitle } from "@/lib/usePageTitle";
 import {
   BarChart,
   Bar,
@@ -77,6 +78,7 @@ const RANGE_LABELS: Record<TimeRange, string> = {
 };
 
 export default function AnalyticsPage() {
+  usePageTitle("Analytics");
   const [range, setRange] = useState<TimeRange>("6m");
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AnalyticsData | null>(null);
