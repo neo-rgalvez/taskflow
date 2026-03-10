@@ -60,7 +60,9 @@ export async function GET(req: NextRequest) {
     const auth = await requireAuth(req);
     if (auth instanceof NextResponse) return auth;
 
-    const range = req.nextUrl.searchParams.get("range") || "6m";
+    const VALID_RANGES = new Set(["3m", "6m", "1y"]);
+    const rangeParam = req.nextUrl.searchParams.get("range") || "6m";
+    const range = VALID_RANGES.has(rangeParam) ? rangeParam : "6m";
     const rangeStart = getStartDate(range);
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -74,6 +76,8 @@ export async function GET(req: NextRequest) {
       timeEntriesThisWeek,
       activeClientCount,
       activeProjects,
+      overdueTasks,
+      topProjectsRaw,
     ] = await Promise.all([
       // All billable time entries in range with project+client info
       db.timeEntry.findMany({
@@ -120,7 +124,7 @@ export async function GET(req: NextRequest) {
         where: { userId: auth.userId, isArchived: false },
       }),
 
-      // Active projects with budget info
+      // Active projects with budget info and ALL-TIME time entries for budget calc
       db.project.findMany({
         where: { userId: auth.userId, status: "active" },
         select: {
@@ -128,7 +132,54 @@ export async function GET(req: NextRequest) {
           name: true,
           budgetHours: true,
           hourlyRate: true,
+          timeEntries: {
+            select: { durationMinutes: true },
+          },
         },
+      }),
+
+      // Overdue tasks: past due date, not done
+      db.task.findMany({
+        where: {
+          userId: auth.userId,
+          dueDate: { lt: now },
+          status: { notIn: ["done"] },
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          dueDate: true,
+          project: { select: { id: true, name: true } },
+        },
+        orderBy: { dueDate: "asc" },
+        take: 20,
+      }),
+
+      // Top projects: active projects with task counts, hours, and revenue
+      db.project.findMany({
+        where: { userId: auth.userId, status: "active" },
+        select: {
+          id: true,
+          name: true,
+          hourlyRate: true,
+          budgetHours: true,
+          status: true,
+          deadline: true,
+          client: { select: { name: true } },
+          _count: { select: { tasks: true } },
+          tasks: {
+            where: { status: "done" },
+            select: { id: true },
+          },
+          timeEntries: {
+            where: { startTime: { gte: rangeStart } },
+            select: { durationMinutes: true, isBillable: true },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 10,
       }),
     ]);
 
@@ -239,37 +290,96 @@ export async function GET(req: NextRequest) {
 
     // ── Project Budget Utilization ────────────────────────────────────
 
-    // Gather actual hours per project from all time entries (not just range)
-    const projectHoursUsed: Record<string, number> = {};
-    for (const entry of timeEntriesInRange) {
-      const pId = entry.project.id;
-      if (!projectHoursUsed[pId]) projectHoursUsed[pId] = 0;
-      projectHoursUsed[pId] += entry.durationMinutes / 60;
-    }
-
+    // Uses ALL-TIME hours from the project (not range-filtered) for accurate budget tracking
     const projectBudgets = activeProjects
       .filter(
         (p: { budgetHours: number | null }) =>
           p.budgetHours && p.budgetHours > 0
       )
-      .map((p: { id: string; name: string; budgetHours: number | null }) => {
-        const used = Math.round((projectHoursUsed[p.id] || 0) * 10) / 10;
-        const budget = p.budgetHours!;
-        return {
-          name: p.name,
-          budget,
-          used,
-          percentage: Math.round((used / budget) * 100),
-        };
-      })
+      .map(
+        (p: {
+          id: string;
+          name: string;
+          budgetHours: number | null;
+          timeEntries: { durationMinutes: number }[];
+        }) => {
+          const totalMinutes = p.timeEntries.reduce(
+            (s, e) => s + e.durationMinutes,
+            0
+          );
+          const used = Math.round((totalMinutes / 60) * 10) / 10;
+          const budget = p.budgetHours!;
+          return {
+            name: p.name,
+            budget,
+            used,
+            percentage: Math.round((used / budget) * 100),
+          };
+        }
+      )
       .sort(
         (a: { percentage: number }, b: { percentage: number }) =>
           b.percentage - a.percentage
       );
 
+    // ── Top Projects ──────────────────────────────────────────────────
+
+    const topProjects = topProjectsRaw.map((p) => {
+      const totalHours =
+        Math.round(
+          p.timeEntries.reduce(
+            (s: number, e: { durationMinutes: number }) =>
+              s + e.durationMinutes,
+            0
+          ) / 6
+        ) / 10;
+      const billableHours =
+        Math.round(
+          p.timeEntries
+            .filter((e: { isBillable: boolean }) => e.isBillable)
+            .reduce(
+              (s: number, e: { durationMinutes: number }) =>
+                s + e.durationMinutes,
+              0
+            ) / 6
+        ) / 10;
+      const revenue = p.hourlyRate
+        ? Math.round(billableHours * Number(p.hourlyRate))
+        : 0;
+      const completedTasks = p.tasks.length;
+      const totalTasks = p._count.tasks;
+
+      return {
+        id: p.id,
+        name: p.name,
+        clientName: p.client.name,
+        totalHours,
+        revenue,
+        completedTasks,
+        totalTasks,
+        budgetHours: p.budgetHours,
+        deadline: p.deadline ? p.deadline.toISOString() : null,
+      };
+    });
+
+    // ── Overdue Tasks ───────────────────────────────────────────────────
+
+    const overdueTasksList = overdueTasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      priority: t.priority,
+      dueDate: t.dueDate!.toISOString(),
+      projectName: t.project.name,
+      projectId: t.project.id,
+    }));
+
     // ── Check if there's any data at all ──────────────────────────────
 
-    const hasData = timeEntriesInRange.length > 0 || activeProjects.length > 0;
+    const hasData =
+      timeEntriesInRange.length > 0 ||
+      activeProjects.length > 0 ||
+      overdueTasks.length > 0;
 
     return NextResponse.json({
       hasData,
@@ -284,6 +394,8 @@ export async function GET(req: NextRequest) {
       revenueByClient,
       weeklyHours,
       projectBudgets,
+      topProjects,
+      overdueTasks: overdueTasksList,
     });
   } catch (err) {
     console.error("GET /api/analytics error:", err);
